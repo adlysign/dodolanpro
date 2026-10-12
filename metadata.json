@@ -1,0 +1,6 @@
+{
+  "name": "DodolanPro",
+  "description": "Aplikasi Kasir POS & SIS Retail Modern, Full Offline dengan Backup & Restore, mendukung Ponsel & Tablet Portrait & Landscape",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
