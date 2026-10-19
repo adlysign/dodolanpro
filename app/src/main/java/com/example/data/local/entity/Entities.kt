@@ -32,6 +32,11 @@ data class StoreConfigEntity(
     val receiptPolicyMsg: String = "Barang yang sudah dibeli tidak dapat ditukar",
     val activeVoucherCode: String = "",
     val voucherDiscountAmount: Double = 0.0,
+    val voucherAutoGenerateOnReceipt: Boolean = true,
+    val voucherDefaultNominal: Double = 5000.0,
+    val voucherMinBelanjaSyarat: Double = 50000.0,
+    val voucherMinBelanjaPakai: Double = 30000.0,
+    val voucherMasaBerlakuHari: Int = 7,
     val isLicensed: Boolean = true,
     val licenseKey: String = "PRO-OFFLINE-FULL-2026",
     val licenseType: String = "PRO_FULL",
@@ -52,10 +57,175 @@ data class CashierUserEntity(
     @PrimaryKey val nik: String,
     val nama: String,
     val pin: String,
-    val role: String = "KASIR", // ADMIN, KASIR, SUPERVISOR
+    val role: String = "KASIR", // OWNER, ADMIN, SUPERVISOR, KASIR
     val statusAktif: Boolean = true,
-    val createdAt: Long = System.currentTimeMillis()
-)
+    val createdAt: Long = System.currentTimeMillis(),
+
+    // --- HAK AKSES KASIR (POS) ---
+    val canTransaksiPos: Boolean = true,
+    val canVoidItem: Boolean = false,
+    val canCancelTransaksi: Boolean = true,
+    val canReturKonsumen: Boolean = false,
+    val canPendingRecall: Boolean = true,
+    val canManualDiscount: Boolean = false,
+    val canBukaLaciUang: Boolean = true,
+
+    // --- HAK AKSES SHIFT & CLEREK ---
+    val canBukaTutupShift: Boolean = true,
+    val canClerekKasir: Boolean = true,
+    val canViewOmsetShift: Boolean = false,
+
+    // --- HAK AKSES SIS & MANAJEMEN ---
+    val canAccessSis: Boolean = false,
+    val canManageProduk: Boolean = false,
+    val canManagePembelian: Boolean = false,
+    val canCetakLabelRak: Boolean = false,
+    val canStockOpname: Boolean = false,
+    val canReturPembelian: Boolean = false,
+    val canEodTutupToko: Boolean = false,
+    val canViewLaporan: Boolean = false,
+    val canManageVoucher: Boolean = false,
+    val canManageKaryawan: Boolean = false,
+    val canManageMember: Boolean = false,
+    val canManageSettings: Boolean = false,
+    val canBackupRestore: Boolean = false
+) {
+    fun isOwner(): Boolean = role.equals("OWNER", ignoreCase = true) || nik == "11111111"
+    fun isAdmin(): Boolean = isOwner() || role.equals("ADMIN", ignoreCase = true)
+    fun isSupervisor(): Boolean = isAdmin() || role.equals("SUPERVISOR", ignoreCase = true)
+
+    fun activePermissionsCount(): Int {
+        var count = 0
+        if (canTransaksiPos) count++
+        if (canVoidItem) count++
+        if (canCancelTransaksi) count++
+        if (canReturKonsumen) count++
+        if (canPendingRecall) count++
+        if (canManualDiscount) count++
+        if (canBukaLaciUang) count++
+        if (canBukaTutupShift) count++
+        if (canClerekKasir) count++
+        if (canViewOmsetShift) count++
+        if (canAccessSis) count++
+        if (canManageProduk) count++
+        if (canManagePembelian) count++
+        if (canCetakLabelRak) count++
+        if (canStockOpname) count++
+        if (canReturPembelian) count++
+        if (canEodTutupToko) count++
+        if (canViewLaporan) count++
+        if (canManageVoucher) count++
+        if (canManageKaryawan) count++
+        if (canManageMember) count++
+        if (canManageSettings) count++
+        if (canBackupRestore) count++
+        return count
+    }
+
+    companion object {
+        fun createWithRole(
+            nik: String,
+            nama: String,
+            pin: String,
+            role: String,
+            statusAktif: Boolean = true
+        ): CashierUserEntity {
+            val upperRole = role.trim().uppercase()
+            return when (upperRole) {
+                "OWNER", "ADMIN" -> CashierUserEntity(
+                    nik = nik,
+                    nama = nama,
+                    pin = pin,
+                    role = upperRole,
+                    statusAktif = statusAktif,
+                    canTransaksiPos = true,
+                    canVoidItem = true,
+                    canCancelTransaksi = true,
+                    canReturKonsumen = true,
+                    canPendingRecall = true,
+                    canManualDiscount = true,
+                    canBukaLaciUang = true,
+                    canBukaTutupShift = true,
+                    canClerekKasir = true,
+                    canViewOmsetShift = true,
+                    canAccessSis = true,
+                    canManageProduk = true,
+                    canManagePembelian = true,
+                    canCetakLabelRak = true,
+                    canStockOpname = true,
+                    canReturPembelian = true,
+                    canEodTutupToko = true,
+                    canViewLaporan = true,
+                    canManageVoucher = true,
+                    canManageKaryawan = true,
+                    canManageMember = true,
+                    canManageSettings = true,
+                    canBackupRestore = true
+                )
+                "SUPERVISOR" -> CashierUserEntity(
+                    nik = nik,
+                    nama = nama,
+                    pin = pin,
+                    role = upperRole,
+                    statusAktif = statusAktif,
+                    canTransaksiPos = true,
+                    canVoidItem = true,
+                    canCancelTransaksi = true,
+                    canReturKonsumen = true,
+                    canPendingRecall = true,
+                    canManualDiscount = true,
+                    canBukaLaciUang = true,
+                    canBukaTutupShift = true,
+                    canClerekKasir = true,
+                    canViewOmsetShift = true,
+                    canAccessSis = true,
+                    canManageProduk = true,
+                    canManagePembelian = true,
+                    canCetakLabelRak = true,
+                    canStockOpname = true,
+                    canReturPembelian = true,
+                    canEodTutupToko = false,
+                    canViewLaporan = true,
+                    canManageVoucher = true,
+                    canManageKaryawan = false,
+                    canManageMember = true,
+                    canManageSettings = false,
+                    canBackupRestore = false
+                )
+                else -> CashierUserEntity(
+                    nik = nik,
+                    nama = nama,
+                    pin = pin,
+                    role = "KASIR",
+                    statusAktif = statusAktif,
+                    canTransaksiPos = true,
+                    canVoidItem = false,
+                    canCancelTransaksi = true,
+                    canReturKonsumen = false,
+                    canPendingRecall = true,
+                    canManualDiscount = false,
+                    canBukaLaciUang = true,
+                    canBukaTutupShift = true,
+                    canClerekKasir = true,
+                    canViewOmsetShift = false,
+                    canAccessSis = false,
+                    canManageProduk = false,
+                    canManagePembelian = false,
+                    canCetakLabelRak = false,
+                    canStockOpname = false,
+                    canReturPembelian = false,
+                    canEodTutupToko = false,
+                    canViewLaporan = false,
+                    canManageVoucher = false,
+                    canManageKaryawan = false,
+                    canManageMember = false,
+                    canManageSettings = false,
+                    canBackupRestore = false
+                )
+            }
+        }
+    }
+}
 
 @Entity(tableName = "shift_configs")
 data class ShiftConfigEntity(
@@ -95,8 +265,54 @@ data class ProductEntity(
     val satuanRepack: String = "",
     val isiRepack: Int = 1,
     val hargaRepack: Double = 0.0,
-    val barcodeRepack: String = ""
-)
+    val barcodeRepack: String = "",
+    val satuanRepack2: String = "",
+    val isiRepack2: Int = 1,
+    val hargaRepack2: Double = 0.0,
+    val barcodeRepack2: String = "",
+    val repackDeskripsi: String = "",
+
+    // Promo detail
+    val promoType: String = "DISKON_PERSEN", // "DISKON_PERSEN", "DISKON_NOMINAL", "BELI_X_GRATIS_Y", "BELI_X_POTONGAN", "GROSIR"
+    val diskonNominal: Double = 0.0,
+    val promoMinBeli: Int = 2,
+    val promoGratisQty: Int = 1,
+    val promoPotonganNominal: Double = 0.0,
+    val promoBerlakuDari: String = "",
+    val promoBerlakuSampai: String = "",
+    val promoKeterangan: String = ""
+) {
+    fun hasDiscountOrPromo(): Boolean {
+        if (!isPromo) return false
+        return diskonPersen > 0 || diskonNominal > 0 || promoPotonganNominal > 0 ||
+                promoType == "BELI_X_GRATIS_Y" || (hargaGrosir > 0)
+    }
+
+    fun getEffectivePromoLabel(): String {
+        if (!isPromo) return ""
+        if (promoKeterangan.isNotBlank()) return promoKeterangan
+        return when (promoType) {
+            "BELI_X_GRATIS_Y" -> "Beli $promoMinBeli Gratis $promoGratisQty"
+            "BELI_X_POTONGAN" -> "Beli $promoMinBeli Potongan Rp ${promoPotonganNominal.toLong()}"
+            "DISKON_NOMINAL" -> "Diskon Rp ${diskonNominal.toLong()}"
+            "DISKON_PERSEN" -> if (diskonPersen > 0) "Diskon ${diskonPersen.toInt()}%" else "Promo"
+            "GROSIR" -> "Beli >= $hargaGrosirQty Jadi Rp ${hargaGrosir.toLong()}"
+            else -> if (promoLabel.isNotBlank()) promoLabel else "PROMO"
+        }
+    }
+
+    fun getEffectiveDiscountedPrice(): Double {
+        if (!isPromo) return hargaJual
+        return when (promoType) {
+            "DISKON_PERSEN" -> if (diskonPersen > 0) hargaJual * (1.0 - (diskonPersen / 100.0)) else hargaJual
+            "DISKON_NOMINAL" -> if (diskonNominal > 0) maxOf(0.0, hargaJual - diskonNominal) else hargaJual
+            "BELI_X_POTONGAN" -> if (promoMinBeli > 0 && promoPotonganNominal > 0) maxOf(0.0, hargaJual - (promoPotonganNominal / promoMinBeli)) else hargaJual
+            "BELI_X_GRATIS_Y" -> if (promoMinBeli + promoGratisQty > 0) (hargaJual * promoMinBeli) / (promoMinBeli + promoGratisQty) else hargaJual
+            "GROSIR" -> if (hargaGrosir > 0) hargaGrosir else hargaJual
+            else -> if (diskonPersen > 0) hargaJual * (1.0 - (diskonPersen / 100.0)) else hargaJual
+        }
+    }
+}
 
 @Entity(tableName = "transactions")
 data class TransactionEntity(
@@ -117,6 +333,9 @@ data class TransactionEntity(
     val kodeVoucher: String = "",
     val nilaiPotonganVoucher: Double = 0.0,
     val refPembayaran: String = "",
+    val voucherDiberikan: String = "",
+    val voucherDiberikanNominal: Double = 0.0,
+    val voucherDiberikanExpiry: String = "",
     val timestamp: Long = System.currentTimeMillis(),
     val isClerek: Boolean = false
 ) {
@@ -284,3 +503,37 @@ data class PurchaseOrderEntity(
     val keterangan: String = "",
     val timestamp: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "vouchers")
+data class VoucherEntity(
+    @PrimaryKey val kodeVoucher: String,
+    val nominalDiskon: Double,
+    val minBelanja: Double = 0.0,
+    val tanggalMulai: String = "",
+    val tanggalKedaluwarsa: String = "", // Format: "dd/MM/yyyy"
+    val isUsed: Boolean = false,
+    val usedAtBonNo: String = "",
+    val usedAtTimestamp: Long = 0L,
+    val bonNoAsal: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+) {
+    val statusText: String
+        get() {
+            if (isUsed) return "SUDAH DIGUNAKAN"
+            return if (isExpired()) "KEDALUWARSA" else "AKTIF"
+        }
+
+    fun isExpired(): Boolean {
+        if (tanggalKedaluwarsa.isBlank()) return false
+        return try {
+            val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+            val expDate = sdf.parse(tanggalKedaluwarsa)
+            val todayStr = sdf.format(java.util.Date())
+            val today = sdf.parse(todayStr)
+            expDate != null && today != null && today.after(expDate)
+        } catch (_: Exception) {
+            false
+        }
+    }
+}
+

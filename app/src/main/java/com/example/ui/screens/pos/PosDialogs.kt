@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -128,18 +130,51 @@ fun LovProductDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Category chips
-                ScrollableTabRow(
-                    selectedTabIndex = categories.indexOf(selectedCategory).coerceAtLeast(0),
-                    edgePadding = 4.dp,
-                    modifier = Modifier.fillMaxWidth()
+                // Category Filter Chips (Teks jelas, background terang, teks kontras tinggi, anti-gelap)
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                        .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    categories.forEach { cat ->
-                        Tab(
-                            selected = selectedCategory == cat,
-                            onClick = { selectedCategory = cat },
-                            text = { Text(cat, fontSize = 12.sp) }
-                        )
+                    items(categories) { cat ->
+                        val isSelected = selectedCategory.equals(cat, ignoreCase = true)
+                        Surface(
+                            modifier = Modifier
+                                .clickable { selectedCategory = cat }
+                                .testTag("lov_cat_${cat}"),
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isSelected) RetailNavy else Color.White,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSelected) RetailNavy else Color(0xFFCBD5E1)
+                            ),
+                            shadowElevation = if (isSelected) 1.dp else 0.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                Text(
+                                    text = cat,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color.White else Color(0xFF1E293B)
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -173,10 +208,57 @@ fun LovProductDialog(
                             Text(prod.plu, modifier = Modifier.weight(1.2f), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
                             Column(modifier = Modifier.weight(3f)) {
                                 Text(prod.nama, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, color = Color.Black)
-                                Text("${prod.kategori} | Rak: ${prod.rakPlanogram}", fontSize = 10.sp, color = Color.Black)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                ) {
+                                    // High contrast category badge (Background terang, teks gelap jelas)
+                                    Surface(
+                                        color = Color(0xFFF1F5F9),
+                                        shape = RoundedCornerShape(3.dp),
+                                        border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFCBD5E1))
+                                    ) {
+                                        Text(
+                                            prod.kategori.ifEmpty { "Umum" },
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF1E293B),
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        "Rak: ${prod.rakPlanogram.ifEmpty { "-" }}",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF475569)
+                                    )
+                                }
                             }
                             Text("${prod.stok}", modifier = Modifier.weight(1f), fontSize = 12.sp, color = Color.Black)
-                            Text(formatRupiah(prod.hargaJual), modifier = Modifier.weight(1.5f), fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, color = Color.Black)
+                            Column(modifier = Modifier.weight(1.5f), horizontalAlignment = Alignment.End) {
+                                if (prod.hasDiscountOrPromo() || prod.isPromo) {
+                                    Text(
+                                        formatRupiah(prod.hargaJual),
+                                        fontSize = 10.sp,
+                                        color = Color.Gray,
+                                        style = LocalTextStyle.current.copy(textDecoration = TextDecoration.LineThrough)
+                                    )
+                                    Text(
+                                        formatRupiah(prod.getEffectiveDiscountedPrice()),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = RetailRedPrimary
+                                    )
+                                } else {
+                                    Text(
+                                        formatRupiah(prod.hargaJual),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.End,
+                                        color = Color.Black
+                                    )
+                                }
+                            }
                         }
                         HorizontalDivider(color = PosCardBorder.copy(alpha = 0.5f))
                     }
@@ -462,6 +544,7 @@ fun PaymentDialog(
     var cardApprovalCode by remember { mutableStateOf("") }
     var voucherCodeInput by remember { mutableStateOf("") }
     var voucherMessage by remember { mutableStateOf("") }
+    var isVoucherSuccess by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
 
     val numericCash = cashInput.toDoubleOrNull() ?: 0.0
@@ -757,21 +840,40 @@ fun PaymentDialog(
                         onValueChange = { voucherCodeInput = it },
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("Ketik Kode Voucher (Opsional)") },
-                        singleLine = true
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            color = Color(0xFF1A1A1A),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color(0xFF1A1A1A),
+                            unfocusedTextColor = Color(0xFF1A1A1A),
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White,
+                            focusedBorderColor = RetailNavy,
+                            unfocusedBorderColor = Color(0xFFB0BEC5)
+                        )
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Button(
                         onClick = {
                             val res = onApplyVoucher(voucherCodeInput)
+                            isVoucherSuccess = res.first
                             voucherMessage = res.second
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = RetailNavy)
                     ) {
-                        Text("Klaim")
+                        Text("Klaim", color = Color.White)
                     }
                 }
                 if (voucherMessage.isNotEmpty()) {
-                    Text(voucherMessage, fontSize = 11.sp, color = RetailGreen, fontWeight = FontWeight.Bold)
+                    Text(
+                        voucherMessage,
+                        fontSize = 11.sp,
+                        color = if (isVoucherSuccess) RetailGreen else Color(0xFFC62828),
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 if (errorMessage.isNotEmpty()) {
@@ -898,7 +1000,18 @@ fun ReceiptDialog(
                 appendLine("----------------------------------------")
                 appendLine("ANDA HEMAT : ${formatRupiah(transaction.diskonTotal)}")
             }
-            if (storeConfig.receiptShowVoucher && storeConfig.activeVoucherCode.isNotEmpty()) {
+            if (transaction.voucherDiberikan.isNotBlank()) {
+                appendLine("----------------------------------------")
+                appendLine("      KODE VOUCHER BELANJA ANDA")
+                appendLine("KODE VOUCHER: ${transaction.voucherDiberikan}")
+                appendLine("POTONGAN    : ${formatRupiah(transaction.voucherDiberikanNominal)}")
+                if (storeConfig.voucherMinBelanjaPakai > 0) {
+                    appendLine("MIN. BELANJA: ${formatRupiah(storeConfig.voucherMinBelanjaPakai)}")
+                }
+                appendLine("BERLAKU S/D : ${transaction.voucherDiberikanExpiry}")
+                appendLine("*Gunakan kode ini pd belanja berikutnya")
+                appendLine("*Hanya berlaku 1x & s/d tanggal kedaluwarsa")
+            } else if (storeConfig.receiptShowVoucher && storeConfig.activeVoucherCode.isNotEmpty()) {
                 appendLine("----------------------------------------")
                 appendLine("KODE VOUCHER ANDA: ${storeConfig.activeVoucherCode}")
                 appendLine("Gunakan utk potongan Rp ${storeConfig.voucherDiscountAmount.toLong()}")

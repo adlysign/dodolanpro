@@ -15,10 +15,10 @@ interface PosDao {
     @Query("SELECT * FROM products WHERE statusAktif = 1 ORDER BY nama ASC")
     suspend fun getAllProductsList(): List<ProductEntity>
 
-    @Query("SELECT * FROM products WHERE plu = :code OR barcode = :code LIMIT 1")
+    @Query("SELECT * FROM products WHERE plu = :code OR barcode = :code OR barcodeRepack = :code OR barcodeRepack2 = :code LIMIT 1")
     suspend fun getProductByPluOrBarcode(code: String): ProductEntity?
 
-    @Query("SELECT * FROM products WHERE nama LIKE '%' || :query || '%' OR plu LIKE '%' || :query || '%' OR barcode LIKE '%' || :query || '%'")
+    @Query("SELECT * FROM products WHERE nama LIKE '%' || :query || '%' OR plu LIKE '%' || :query || '%' OR barcode LIKE '%' || :query || '%' OR barcodeRepack LIKE '%' || :query || '%' OR barcodeRepack2 LIKE '%' || :query || '%'")
     suspend fun searchProducts(query: String): List<ProductEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -298,4 +298,32 @@ interface PosDao {
 
     @Query("DELETE FROM employee_schedules")
     suspend fun clearSchedules()
+
+    // Vouchers
+    @Query("SELECT * FROM vouchers ORDER BY timestamp DESC")
+    fun getAllVouchers(): Flow<List<VoucherEntity>>
+
+    @Query("SELECT * FROM vouchers ORDER BY timestamp DESC")
+    suspend fun getAllVouchersList(): List<VoucherEntity>
+
+    @Query("SELECT * FROM vouchers WHERE UPPER(kodeVoucher) = UPPER(:code) LIMIT 1")
+    suspend fun getVoucherByCode(code: String): VoucherEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVoucher(voucher: VoucherEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVouchers(vouchers: List<VoucherEntity>)
+
+    @Update
+    suspend fun updateVoucher(voucher: VoucherEntity)
+
+    @Delete
+    suspend fun deleteVoucher(voucher: VoucherEntity)
+
+    @Query("UPDATE vouchers SET isUsed = 1, usedAtBonNo = :bonNo, usedAtTimestamp = :timestamp WHERE UPPER(kodeVoucher) = UPPER(:code)")
+    suspend fun markVoucherAsUsed(code: String, bonNo: String, timestamp: Long)
+
+    @Query("DELETE FROM vouchers")
+    suspend fun clearVouchers()
 }

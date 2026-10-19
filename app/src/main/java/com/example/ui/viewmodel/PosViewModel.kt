@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.*
 import com.example.data.repository.PosRepository
+import com.example.ui.screens.pos.formatRupiah
 import com.example.util.DocExportManager
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -36,6 +37,24 @@ enum class PosNavDestination {
     SIS_DASHBOARD
 }
 
+sealed class PosShortcutEvent {
+    object F1_HELP : PosShortcutEvent()
+    object F2_CARI : PosShortcutEvent()
+    object F3_MEMBER : PosShortcutEvent()
+    object F4_BATAL : PosShortcutEvent()
+    object F5_PENDING : PosShortcutEvent()
+    object F6_RECALL : PosShortcutEvent()
+    object F7_RETUR : PosShortcutEvent()
+    object F8_VOID : PosShortcutEvent()
+    object F10_SIS : PosShortcutEvent()
+    object F12_BAYAR : PosShortcutEvent()
+    object ESCAPE : PosShortcutEvent()
+    object DELETE_ITEM : PosShortcutEvent()
+    object PLUS_PAY : PosShortcutEvent()
+    object ARROW_UP : PosShortcutEvent()
+    object ARROW_DOWN : PosShortcutEvent()
+}
+
 data class CartItem(
     val product: ProductEntity,
     val qty: Int = 1,
@@ -45,22 +64,134 @@ data class CartItem(
     val note: String = "",
     val isVoid: Boolean = false,
     val voidReason: String = "",
-    val isRetur: Boolean = false
+    val isRetur: Boolean = false,
+    val selectedSatuan: String = product.satuan
 ) {
-    val unitPrice: Double
+    val baseUnitPrice: Double
         get() {
-            return when {
-                isGrosirApplied && product.hargaGrosir > 0 -> product.hargaGrosir
-                isPromoApplied && product.diskonPersen > 0 -> product.hargaJual * (1.0 - (product.diskonPersen / 100.0))
+            return when (selectedSatuan) {
+                product.satuanRepack -> if (product.hargaRepack > 0) product.hargaRepack else product.hargaJual * maxOf(1, product.isiRepack)
+                product.satuanRepack2 -> if (product.hargaRepack2 > 0) product.hargaRepack2 else product.hargaJual * maxOf(1, product.isiRepack2)
                 else -> product.hargaJual
             }
+        }
+
+    val promoDiscountAmount: Double
+        get() {
+            if (isVoid || isRetur) return 0.0
+            if (!product.isPromo && !product.hasDiscountOrPromo()) {
+                if (isGrosirApplied && product.hargaGrosir > 0 && qty >= product.hargaGrosirQty) {
+                    return qty * maxOf(0.0, baseUnitPrice - product.hargaGrosir)
+                }
+                return 0.0
+            }
+
+            return when (product.promoType) {
+                "BELI_X_GRATIS_Y" -> {
+                    if (product.promoMinBeli > 0 && qty >= product.promoMinBeli) {
+                        val freeUnits = (qty / product.promoMinBeli) * maxOf(1, product.promoGratisQty)
+                        freeUnits * baseUnitPrice
+                    } else 0.0
+                }
+                "BELI_X_POTONGAN" -> {
+                    if (product.promoMinBeli > 0 && qty >= product.promoMinBeli && product.promoPotonganNominal > 0) {
+                        val sets = qty / product.promoMinBeli
+                        sets * product.promoPotonganNominal
+                    } else 0.0
+                }
+                "DISKON_NOMINAL" -> {
+                    if (product.diskonNominal > 0) {
+                        qty * product.diskonNominal
+                    } else 0.0
+                }
+                "DISKON_PERSEN" -> {
+                    if (product.diskonPersen > 0) {
+                        qty * baseUnitPrice * (product.diskonPersen / 100.0)
+                    } else 0.0
+                }
+                "GROSIR" -> {
+                    if (product.hargaGrosir > 0 && qty >= product.hargaGrosirQty) {
+                        qty * maxOf(0.0, baseUnitPrice - product.hargaGrosir)
+                    } else 0.0
+                }
+                else -> {
+                    if (product.diskonPersen > 0) {
+                        qty * baseUnitPrice * (product.diskonPersen / 100.0)
+                    } else if (product.diskonNominal > 0) {
+                        qty * product.diskonNominal
+                    } else 0.0
+                }
+            }
+        }
+
+    val isPromoActive: Boolean
+        get() = promoDiscountAmount > 0.0
+
+    val unitPrice: Double
+        get() {
+            if (qty <= 0) return baseUnitPrice
+            val effective = (baseUnitPrice * qty - promoDiscountAmount) / qty
+            return maxOf(0.0, effective)
         }
 
     val subtotal: Double
         get() {
             if (isVoid) return 0.0
-            val amount = (unitPrice * qty) - customDiscount
+            val amount = maxOf(0.0, (baseUnitPrice * qty) - promoDiscountAmount - customDiscount)
             return if (isRetur) -amount else amount
+        }
+
+    val promoStatusText: String
+        get() {
+            if (!product.isPromo && !product.hasDiscountOrPromo()) {
+                if (product.hargaGrosir > 0 && product.hargaGrosirQty > 0) {
+                    if (qty >= product.hargaGrosirQty) {
+                        return "Grosir Beli >= ${product.hargaGrosirQty} (Hemat ${formatRupiah(promoDiscountAmount)})"
+                    } else {
+                        val needed = product.hargaGrosirQty - qty
+                        return "Beli $needed lagi untuk Harga Grosir ${formatRupiah(product.hargaGrosir)}"
+                    }
+                }
+                return ""
+            }
+
+            return when (product.promoType) {
+                "BELI_X_GRATIS_Y" -> {
+                    if (qty >= product.promoMinBeli) {
+                        val freeUnits = (qty / product.promoMinBeli) * maxOf(1, product.promoGratisQty)
+                        "Beli ${product.promoMinBeli} Gratis ${product.promoGratisQty} (Dapat $freeUnits Gratis, Hemat ${formatRupiah(promoDiscountAmount)})"
+                    } else {
+                        val needed = product.promoMinBeli - qty
+                        "Beli $needed lagi untuk dapatkan GRATIS ${product.promoGratisQty}!"
+                    }
+                }
+                "BELI_X_POTONGAN" -> {
+                    if (qty >= product.promoMinBeli) {
+                        "Beli ${product.promoMinBeli} Potongan ${formatRupiah(product.promoPotonganNominal)} (Hemat ${formatRupiah(promoDiscountAmount)})"
+                    } else {
+                        val needed = product.promoMinBeli - qty
+                        "Beli $needed lagi untuk Potongan ${formatRupiah(product.promoPotonganNominal)}!"
+                    }
+                }
+                "DISKON_NOMINAL" -> {
+                    "Diskon ${formatRupiah(product.diskonNominal)}/item (Hemat ${formatRupiah(promoDiscountAmount)})"
+                }
+                "DISKON_PERSEN" -> {
+                    "Diskon ${product.diskonPersen.toInt()}% (Hemat ${formatRupiah(promoDiscountAmount)})"
+                }
+                "GROSIR" -> {
+                    if (qty >= product.hargaGrosirQty) {
+                        "Grosir Beli >= ${product.hargaGrosirQty} (Harga ${formatRupiah(product.hargaGrosir)})"
+                    } else {
+                        val needed = product.hargaGrosirQty - qty
+                        "Beli $needed lagi untuk Harga Grosir ${formatRupiah(product.hargaGrosir)}"
+                    }
+                }
+                else -> {
+                    if (isPromoActive) "Promo Hemat ${formatRupiah(promoDiscountAmount)}"
+                    else product.getEffectivePromoLabel()
+                }
+            }
         }
 }
 
@@ -182,11 +313,15 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     val allReturns: StateFlow<List<ReturnDocEntity>> = repository.allReturns
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val allVouchers: StateFlow<List<VoucherEntity>> = repository.getAllVouchers()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val products: StateFlow<List<ProductEntity>> get() = allProducts
     val transactions: StateFlow<List<TransactionEntity>> get() = allTransactions
     val cashiers: StateFlow<List<CashierUserEntity>> get() = allCashiers
     val members: StateFlow<List<MemberEntity>> get() = allMembers
     val shiftConfigs: StateFlow<List<ShiftConfigEntity>> get() = allShiftConfigs
+    val vouchers: StateFlow<List<VoucherEntity>> get() = allVouchers
 
     val activeMember: StateFlow<MemberEntity?> get() = currentMember
 
@@ -214,6 +349,14 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _inputBarcodeInput = MutableStateFlow("")
     val inputBarcodeInput: StateFlow<String> = _inputBarcodeInput.asStateFlow()
+
+    // Hardware Keyboard Shortcut Events
+    private val _shortcutEvents = MutableSharedFlow<PosShortcutEvent>(extraBufferCapacity = 16)
+    val shortcutEvents: SharedFlow<PosShortcutEvent> = _shortcutEvents.asSharedFlow()
+
+    fun triggerShortcut(event: PosShortcutEvent) {
+        _shortcutEvents.tryEmit(event)
+    }
 
     private fun savePendingCartsToStorage(carts: List<PendingCart>) {
         try {
@@ -415,9 +558,9 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         return "BON-${sdf.format(Date())}"
     }
 
-    fun addProductToCart(product: ProductEntity, qty: Int = 1) {
+    fun addProductToCart(product: ProductEntity, qty: Int = 1, selectedSatuan: String = product.satuan) {
         val currentList = _cartItems.value.toMutableList()
-        val index = currentList.indexOfFirst { it.product.plu == product.plu }
+        val index = currentList.indexOfFirst { it.product.plu == product.plu && it.selectedSatuan == selectedSatuan && !it.isVoid && !it.isRetur }
         val newTotalQty: Int
 
         if (index >= 0) {
@@ -437,7 +580,8 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                     product = product,
                     qty = qty,
                     isGrosirApplied = isGrosir,
-                    isPromoApplied = product.isPromo || product.diskonPersen > 0
+                    isPromoApplied = product.isPromo || product.diskonPersen > 0,
+                    selectedSatuan = selectedSatuan
                 )
             )
             newTotalQty = qty
@@ -445,6 +589,112 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         _cartItems.value = currentList
 
         // Check for Promo Alerts
+        if (product.isPromo) {
+            when (product.promoType) {
+                "BELI_X_GRATIS_Y" -> {
+                    if (newTotalQty >= product.promoMinBeli) {
+                        val freeUnits = (newTotalQty / product.promoMinBeli) * maxOf(1, product.promoGratisQty)
+                        val hemat = freeUnits * product.hargaJual
+                        _activePromoAlert.value = PromoAlertInfo(
+                            product = product,
+                            title = "PROMO AKTIF: Beli ${product.promoMinBeli} Gratis ${product.promoGratisQty}!",
+                            description = "Syarat pembelian minimal ${product.promoMinBeli} ${product.satuan} terpenuhi! Anda mendapatkan $freeUnits ${product.satuan} gratis (Hemat Rp ${hemat.toLong()}).",
+                            badge = "PROMO AKTIF",
+                            currentQty = newTotalQty,
+                            savingsText = "Hemat Rp ${hemat.toLong()}"
+                        )
+                    } else {
+                        val needed = product.promoMinBeli - newTotalQty
+                        _activePromoAlert.value = PromoAlertInfo(
+                            product = product,
+                            title = "INFO PROMO: Beli ${product.promoMinBeli} Gratis ${product.promoGratisQty}!",
+                            description = "Promo ${product.nama}: Cukup tambah $needed lagi untuk mendapatkan GRATIS ${product.promoGratisQty} ${product.satuan}!",
+                            badge = "PROMO BELI ${product.promoMinBeli}",
+                            currentQty = newTotalQty,
+                            neededQtyForPromo = needed,
+                            savingsText = "Gratis ${product.promoGratisQty} ${product.satuan}"
+                        )
+                    }
+                    return
+                }
+                "BELI_X_POTONGAN" -> {
+                    if (newTotalQty >= product.promoMinBeli) {
+                        val sets = newTotalQty / product.promoMinBeli
+                        val hemat = sets * product.promoPotonganNominal
+                        _activePromoAlert.value = PromoAlertInfo(
+                            product = product,
+                            title = "PROMO AKTIF: Beli ${product.promoMinBeli} Potongan Rp ${product.promoPotonganNominal.toLong()}!",
+                            description = "Potongan diskon Rp ${product.promoPotonganNominal.toLong()} per ${product.promoMinBeli} ${product.satuan} aktif otomatis (Total hemat Rp ${hemat.toLong()}).",
+                            badge = "PROMO AKTIF",
+                            currentQty = newTotalQty,
+                            savingsText = "Hemat Rp ${hemat.toLong()}"
+                        )
+                    } else {
+                        val needed = product.promoMinBeli - newTotalQty
+                        _activePromoAlert.value = PromoAlertInfo(
+                            product = product,
+                            title = "INFO PROMO: Beli ${product.promoMinBeli} Potongan Rp ${product.promoPotonganNominal.toLong()}!",
+                            description = "Tambah $needed lagi untuk mendapatkan potongan harga Rp ${product.promoPotonganNominal.toLong()}!",
+                            badge = "POTONGAN RP ${product.promoPotonganNominal.toLong()}",
+                            currentQty = newTotalQty,
+                            neededQtyForPromo = needed,
+                            savingsText = "Potongan Rp ${product.promoPotonganNominal.toLong()}"
+                        )
+                    }
+                    return
+                }
+                "DISKON_NOMINAL" -> {
+                    val hemat = newTotalQty * product.diskonNominal
+                    _activePromoAlert.value = PromoAlertInfo(
+                        product = product,
+                        title = "PROMO AKTIF: Potongan Rp ${product.diskonNominal.toLong()}/item!",
+                        description = "Potongan langsung Rp ${product.diskonNominal.toLong()} diterapkan otomatis (Total hemat Rp ${hemat.toLong()}).",
+                        badge = "PROMO AKTIF",
+                        currentQty = newTotalQty,
+                        savingsText = "Hemat Rp ${hemat.toLong()}"
+                    )
+                    return
+                }
+                "DISKON_PERSEN" -> {
+                    val hemat = newTotalQty * product.hargaJual * (product.diskonPersen / 100.0)
+                    _activePromoAlert.value = PromoAlertInfo(
+                        product = product,
+                        title = "PROMO AKTIF: Diskon ${product.diskonPersen.toInt()}%!",
+                        description = "Diskon ${product.diskonPersen.toInt()}% diterapkan otomatis untuk setiap pembelian ${product.nama}.",
+                        badge = "PROMO AKTIF",
+                        currentQty = newTotalQty,
+                        savingsText = "Hemat Rp ${hemat.toLong()}"
+                    )
+                    return
+                }
+                "GROSIR" -> {
+                    if (newTotalQty >= product.hargaGrosirQty && product.hargaGrosir > 0) {
+                        val hemat = (product.hargaJual - product.hargaGrosir) * newTotalQty
+                        _activePromoAlert.value = PromoAlertInfo(
+                            product = product,
+                            title = "PROMO GROSIR BERHASIL AKTIF!",
+                            description = "Pembelian minimal ${product.hargaGrosirQty} ${product.satuan} tercapai! Harga grosir Rp ${product.hargaGrosir.toLong()} diterapkan.",
+                            badge = "HEMAT GROSIR",
+                            currentQty = newTotalQty,
+                            savingsText = "Hemat Rp ${hemat.toLong()}"
+                        )
+                    } else {
+                        val needed = product.hargaGrosirQty - newTotalQty
+                        _activePromoAlert.value = PromoAlertInfo(
+                            product = product,
+                            title = "PENAWARAN HARGA GROSIR!",
+                            description = "Beli ${product.hargaGrosirQty} ${product.satuan} dapat harga khusus Rp ${product.hargaGrosir.toLong()}. Cukup tambah $needed lagi!",
+                            badge = "PROMO BELI ${product.hargaGrosirQty}",
+                            currentQty = newTotalQty,
+                            neededQtyForPromo = needed,
+                            savingsText = "Harga Rp ${product.hargaGrosir.toLong()}"
+                        )
+                    }
+                    return
+                }
+            }
+        }
+
         if (product.hargaGrosir > 0 && product.hargaGrosirQty > 0) {
             if (newTotalQty >= product.hargaGrosirQty) {
                 val hemat = (product.hargaJual - product.hargaGrosir) * newTotalQty
@@ -456,7 +706,6 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                     currentQty = newTotalQty,
                     savingsText = "Hemat Rp ${hemat.toLong()}"
                 )
-                return
             } else {
                 val needed = product.hargaGrosirQty - newTotalQty
                 _activePromoAlert.value = PromoAlertInfo(
@@ -468,21 +717,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                     neededQtyForPromo = needed,
                     savingsText = "Potongan Rp ${(product.hargaJual - product.hargaGrosir).toLong()}/${product.satuan}"
                 )
-                return
             }
-        }
-
-        if (product.isPromo || product.promoLabel.isNotBlank() || product.diskonPersen > 0.0) {
-            val desc = if (product.promoLabel.isNotBlank()) product.promoLabel else "Mendapatkan potongan diskon khusus ${product.diskonPersen.toInt()}%!"
-            val badge = if (product.promoLabel.isNotBlank()) product.promoLabel.take(15) else "PROMO ${product.diskonPersen.toInt()}%"
-            _activePromoAlert.value = PromoAlertInfo(
-                product = product,
-                title = "PROMO SPESIAL TOKO!",
-                description = desc,
-                badge = badge,
-                currentQty = newTotalQty,
-                savingsText = "Diskon Aktif"
-            )
         }
     }
 
@@ -508,6 +743,15 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         val index = currentList.indexOfFirst { it.product.plu == plu }
         if (index >= 0) {
             updateCartItemQty(index, newQty)
+        }
+    }
+
+    fun updateCartItemSatuan(index: Int, newSatuan: String) {
+        val currentList = _cartItems.value.toMutableList()
+        if (index in currentList.indices) {
+            val item = currentList[index]
+            currentList[index] = item.copy(selectedSatuan = newSatuan)
+            _cartItems.value = currentList
         }
     }
 
@@ -553,14 +797,26 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val product = repository.getProductByPluOrBarcode(trimmed)
             if (product != null) {
-                addProductToCart(product)
-                onResult(true, "Berhasil menambahkan ${product.nama}")
+                val targetSatuan = when {
+                    trimmed.equals(product.barcodeRepack, ignoreCase = true) && product.isRepack && product.satuanRepack.isNotBlank() -> product.satuanRepack
+                    trimmed.equals(product.barcodeRepack2, ignoreCase = true) && product.isRepack && product.satuanRepack2.isNotBlank() -> product.satuanRepack2
+                    else -> product.satuan
+                }
+                addProductToCart(product, 1, targetSatuan)
+                val unitLabel = if (targetSatuan != product.satuan) " ($targetSatuan)" else ""
+                onResult(true, "Berhasil menambahkan ${product.nama}$unitLabel")
             } else {
                 val matches = repository.searchProducts(trimmed)
                 if (matches.size == 1) {
                     val single = matches.first()
-                    addProductToCart(single)
-                    onResult(true, "Berhasil menambahkan ${single.nama}")
+                    val targetSatuan = when {
+                        trimmed.equals(single.barcodeRepack, ignoreCase = true) && single.isRepack && single.satuanRepack.isNotBlank() -> single.satuanRepack
+                        trimmed.equals(single.barcodeRepack2, ignoreCase = true) && single.isRepack && single.satuanRepack2.isNotBlank() -> single.satuanRepack2
+                        else -> single.satuan
+                    }
+                    addProductToCart(single, 1, targetSatuan)
+                    val unitLabel = if (targetSatuan != single.satuan) " ($targetSatuan)" else ""
+                    onResult(true, "Berhasil menambahkan ${single.nama}$unitLabel")
                 } else if (matches.size > 1) {
                     onResult(false, "Ditemukan beberapa produk, pilih di katalog")
                 } else {
@@ -615,18 +871,41 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
 
     fun applyVoucher(code: String): Pair<Boolean, String> {
         val trimmed = code.trim().uppercase()
-        return if (trimmed == "DISKON10" || trimmed == "VOUCHER10K") {
-            applyVoucher(trimmed, 10000.0)
-            Pair(true, "Voucher $trimmed berhasil digunakan (potongan Rp 10.000)")
-        } else if (trimmed == "PROMO50K") {
-            applyVoucher(trimmed, 50000.0)
-            Pair(true, "Voucher $trimmed berhasil digunakan (potongan Rp 50.000)")
-        } else if (trimmed.isNotEmpty()) {
-            applyVoucher(trimmed, 5000.0)
-            Pair(true, "Voucher $trimmed berhasil digunakan (potongan Rp 5.000)")
-        } else {
-            Pair(false, "Kode voucher tidak valid")
+        if (trimmed.isBlank()) {
+            return Pair(false, "Masukkan kode voucher terlebih dahulu")
         }
+
+        val curSubtotal = subtotal.value
+        val voucher = allVouchers.value.find { it.kodeVoucher.equals(trimmed, ignoreCase = true) }
+
+        if (voucher == null) {
+            val config = storeConfig.value
+            if (config.activeVoucherCode.isNotBlank() && config.activeVoucherCode.equals(trimmed, ignoreCase = true)) {
+                val disc = if (config.voucherDiscountAmount > 0) config.voucherDiscountAmount else config.voucherDefaultNominal
+                applyVoucher(trimmed, disc)
+                return Pair(true, "Voucher $trimmed berhasil digunakan (potongan ${formatRupiah(disc)})")
+            }
+            return Pair(false, "Kode voucher '$trimmed' tidak terdaftar atau tidak ditemukan")
+        }
+
+        // 1. Cek apakah voucher sudah pernah digunakan
+        if (voucher.isUsed) {
+            val bonInfo = if (voucher.usedAtBonNo.isNotBlank()) " di struk #${voucher.usedAtBonNo}" else ""
+            return Pair(false, "Voucher '$trimmed' SUDAH DIGUNAKAN$bonInfo dan tidak dapat dipakai lagi")
+        }
+
+        // 2. Cek apakah voucher sudah kedaluwarsa
+        if (voucher.isExpired()) {
+            return Pair(false, "Voucher '$trimmed' SUDAH TIDAK BERLAKU / KEDALUWARSA (berlaku s/d ${voucher.tanggalKedaluwarsa})")
+        }
+
+        // 3. Cek syarat minimal belanja
+        if (curSubtotal < voucher.minBelanja) {
+            return Pair(false, "Minimal belanja untuk voucher ini adalah ${formatRupiah(voucher.minBelanja)} (Subtotal belanja saat ini: ${formatRupiah(curSubtotal)})")
+        }
+
+        applyVoucher(voucher.kodeVoucher, voucher.nominalDiskon)
+        return Pair(true, "Voucher '${voucher.kodeVoucher}' berhasil digunakan (potongan ${formatRupiah(voucher.nominalDiskon)})")
     }
 
     fun applyPoin(points: Int) {
@@ -875,6 +1154,37 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
+            val config = storeConfig.value
+            var voucherDiberikan = ""
+            var voucherDiberikanNominal = 0.0
+            var voucherDiberikanExpiry = ""
+
+            // Otomatis terbitkan voucher acak unik untuk tiap struk jika diaktifkan dan memenuhi syarat
+            if (config.voucherAutoGenerateOnReceipt && grand >= config.voucherMinBelanjaSyarat) {
+                val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+                val randomSuffix = (1..6).map { chars.random() }.joinToString("")
+                voucherDiberikan = "VCR-$randomSuffix"
+                voucherDiberikanNominal = config.voucherDefaultNominal
+
+                val cal = java.util.Calendar.getInstance()
+                cal.add(java.util.Calendar.DAY_OF_YEAR, config.voucherMasaBerlakuHari.coerceAtLeast(1))
+                val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+                voucherDiberikanExpiry = sdf.format(cal.time)
+                val todayStr = sdf.format(java.util.Date())
+
+                val newVoucher = VoucherEntity(
+                    kodeVoucher = voucherDiberikan,
+                    nominalDiskon = voucherDiberikanNominal,
+                    minBelanja = config.voucherMinBelanjaPakai,
+                    tanggalMulai = todayStr,
+                    tanggalKedaluwarsa = voucherDiberikanExpiry,
+                    isUsed = false,
+                    bonNoAsal = bonNo,
+                    timestamp = System.currentTimeMillis()
+                )
+                repository.insertVoucher(newVoucher)
+            }
+
             val success = repository.checkoutTransaction(
                 bonNo = bonNo,
                 kasirNik = kasir.nik,
@@ -893,7 +1203,10 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 kodeVoucher = _appliedVoucherCode.value,
                 nilaiPotonganVoucher = _appliedVoucherDiscount.value,
                 refPembayaran = refPembayaran,
-                items = txItems
+                items = txItems,
+                voucherDiberikan = voucherDiberikan,
+                voucherDiberikanNominal = voucherDiberikanNominal,
+                voucherDiberikanExpiry = voucherDiberikanExpiry
             )
 
             if (success) {
@@ -915,14 +1228,73 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                     kodeVoucher = _appliedVoucherCode.value,
                     nilaiPotonganVoucher = _appliedVoucherDiscount.value,
                     refPembayaran = refPembayaran,
+                    voucherDiberikan = voucherDiberikan,
+                    voucherDiberikanNominal = voucherDiberikanNominal,
+                    voucherDiberikanExpiry = voucherDiberikanExpiry,
                     timestamp = System.currentTimeMillis()
                 )
                 clearCart()
+                _appliedVoucherCode.value = ""
+                _appliedVoucherDiscount.value = 0.0
+                _appliedPoin.value = 0
                 _currentBonNo.value = generateNewBonNo()
                 onComplete(true, "Transaksi berhasil diproses", tx)
             } else {
                 onComplete(false, "Gagal memproses transaksi di database", null)
             }
+        }
+    }
+
+    // Voucher Management
+    fun insertVoucher(voucher: VoucherEntity, onDone: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            repository.insertVoucher(voucher)
+            onDone?.invoke()
+        }
+    }
+
+    fun updateVoucher(voucher: VoucherEntity, onDone: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            repository.updateVoucher(voucher)
+            onDone?.invoke()
+        }
+    }
+
+    fun deleteVoucher(voucher: VoucherEntity, onDone: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            repository.deleteVoucher(voucher)
+            onDone?.invoke()
+        }
+    }
+
+    fun generateManualRandomVoucher(
+        nominal: Double,
+        minBelanja: Double,
+        masaBerlakuHari: Int,
+        customCode: String = "",
+        onDone: (VoucherEntity) -> Unit
+    ) {
+        viewModelScope.launch {
+            val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+            val code = if (customCode.isNotBlank()) customCode.trim().uppercase() else "VCR-" + (1..6).map { chars.random() }.joinToString("")
+            val cal = java.util.Calendar.getInstance()
+            val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+            val todayStr = sdf.format(cal.time)
+            cal.add(java.util.Calendar.DAY_OF_YEAR, masaBerlakuHari.coerceAtLeast(1))
+            val expStr = sdf.format(cal.time)
+
+            val v = VoucherEntity(
+                kodeVoucher = code,
+                nominalDiskon = nominal,
+                minBelanja = minBelanja,
+                tanggalMulai = todayStr,
+                tanggalKedaluwarsa = expStr,
+                isUsed = false,
+                bonNoAsal = "MANUAL",
+                timestamp = System.currentTimeMillis()
+            )
+            repository.insertVoucher(v)
+            onDone(v)
         }
     }
 
@@ -1079,23 +1451,30 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun saveCashierUser(cashier: CashierUserEntity, onDone: () -> Unit) {
+    fun saveCashierUser(cashier: CashierUserEntity, onDone: () -> Unit = {}) {
         viewModelScope.launch {
             repository.saveCashier(cashier)
+            if (_currentCashier.value?.nik == cashier.nik) {
+                _currentCashier.value = cashier
+            }
             onDone()
         }
     }
 
-    fun updateCashierUser(cashier: CashierUserEntity, onDone: () -> Unit) {
+    fun updateCashierUser(cashier: CashierUserEntity, onDone: () -> Unit = {}) {
         viewModelScope.launch {
             repository.updateCashier(cashier)
+            if (_currentCashier.value?.nik == cashier.nik) {
+                _currentCashier.value = cashier
+            }
             onDone()
         }
     }
 
-    fun deleteCashierUser(cashier: CashierUserEntity) {
+    fun deleteCashierUser(cashier: CashierUserEntity, onDone: () -> Unit = {}) {
         viewModelScope.launch {
             repository.deleteCashier(cashier)
+            onDone()
         }
     }
 
@@ -1134,6 +1513,87 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 json
             )
             onDone(success, file, json)
+        }
+    }
+
+    fun executeEodBackup(
+        onResult: (Boolean, File?, File?, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val context = getApplication<Application>()
+                val json = repository.exportDatabaseToJson()
+                val cfg = storeConfig.value
+                val prefix = cfg.storeCode.ifBlank { "DODOLAN" }
+
+                // 1. Simpan berkas cadangan database ke folder DodolanPro/Backup
+                val (bSuccess, backupFile) = DocExportManager.saveDocument(
+                    context,
+                    "Backup",
+                    "EOD_BACKUP_${prefix}",
+                    "json",
+                    json
+                )
+
+                // 2. Simpan juga salinan ke folder DodolanPro/EOD
+                val (_, eodBackupCopy) = DocExportManager.saveDocument(
+                    context,
+                    "EOD",
+                    "EOD_BACKUP_${prefix}",
+                    "json",
+                    json
+                )
+
+                // 3. Simpan berkas ringkasan EOD harian ke folder DodolanPro/EOD
+                val todayStr = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+                val txToday = allTransactions.value
+                val clerekToday = allClerekRecords.value
+                val totalOmset = txToday.sumOf { it.grandTotal }
+                val totalTunai = txToday.filter { it.caraBayar == "TUNAI" }.sumOf { it.grandTotal }
+                val totalNonTunai = txToday.filter { it.caraBayar != "TUNAI" }.sumOf { it.grandTotal }
+
+                val summaryText = buildString {
+                    appendLine("==========================================")
+                    appendLine("       LAPORAN END OF DAY (EOD)")
+                    appendLine("         ${cfg.storeName}")
+                    appendLine("==========================================")
+                    appendLine("Waktu EOD       : $todayStr")
+                    appendLine("Kode Toko       : ${cfg.storeCode}")
+                    appendLine("Petugas EOD     : ${_currentCashier.value?.nama ?: "Administrator"}")
+                    appendLine("------------------------------------------")
+                    appendLine("Total Transaksi : ${txToday.size} Transaksi")
+                    appendLine("Total Omset     : ${formatRupiah(totalOmset)}")
+                    appendLine("  • Tunai       : ${formatRupiah(totalTunai)}")
+                    appendLine("  • Non-Tunai   : ${formatRupiah(totalNonTunai)}")
+                    appendLine("Total Clerek    : ${clerekToday.size} Rekaman Shift")
+                    appendLine("------------------------------------------")
+                    appendLine("STATUS BACKUP DATA:")
+                    appendLine("Berkas Backup   : ${backupFile.name}")
+                    appendLine("Lokasi Android  : ${backupFile.parent}")
+                    appendLine("Status Cadangan : BERHASIL DISIMPAN KE MEMORI")
+                    appendLine("==========================================")
+                }
+
+                val (_, summaryFile) = DocExportManager.saveDocument(
+                    context,
+                    "EOD",
+                    "EOD_RINGKASAN_${prefix}",
+                    "txt",
+                    summaryText
+                )
+
+                // Update status di terminal
+                shiftPrefs.edit()
+                    .putBoolean("is_shift_open", false)
+                    .putBoolean("shift_opened_today", false)
+                    .putString("last_eod_timestamp", todayStr)
+                    .apply()
+
+                onResult(bSuccess, backupFile, summaryFile, "Proses EOD dan pencadangan database berhasil disimpan ke folder Android.")
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onResult(false, null, null, "Gagal menjalankan backup EOD: ${e.message}")
+            }
         }
     }
 
@@ -1221,14 +1681,13 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun saveCashierUser(cashier: CashierUserEntity) {
-        viewModelScope.launch { repository.saveCashier(cashier) }
-    }
-
-    fun deleteCashierUser(nik: String) {
+    fun deleteCashierUser(nik: String, onDone: () -> Unit = {}) {
         viewModelScope.launch {
             val c = allCashiers.value.find { it.nik == nik }
-            if (c != null) repository.deleteCashier(c)
+            if (c != null) {
+                repository.deleteCashier(c)
+            }
+            onDone()
         }
     }
 

@@ -131,7 +131,10 @@ class PosRepository(private val dao: PosDao) {
         kodeVoucher: String,
         nilaiPotonganVoucher: Double,
         refPembayaran: String,
-        items: List<TransactionItemEntity>
+        items: List<TransactionItemEntity>,
+        voucherDiberikan: String = "",
+        voucherDiberikanNominal: Double = 0.0,
+        voucherDiberikanExpiry: String = ""
     ): Boolean = withContext(Dispatchers.IO) {
         try {
             val tx = TransactionEntity(
@@ -152,11 +155,19 @@ class PosRepository(private val dao: PosDao) {
                 kodeVoucher = kodeVoucher,
                 nilaiPotonganVoucher = nilaiPotonganVoucher,
                 refPembayaran = refPembayaran,
+                voucherDiberikan = voucherDiberikan,
+                voucherDiberikanNominal = voucherDiberikanNominal,
+                voucherDiberikanExpiry = voucherDiberikanExpiry,
                 timestamp = System.currentTimeMillis(),
                 isClerek = false
             )
             dao.insertTransaction(tx)
             dao.insertTransactionItems(items)
+
+            // Tandai voucher yang digunakan sebagai 'SUDAH DIGUNAKAN'
+            if (kodeVoucher.isNotBlank()) {
+                dao.markVoucherAsUsed(kodeVoucher, bonNo, System.currentTimeMillis())
+            }
 
             // Deduct product stocks
             for (item in items) {
@@ -262,6 +273,17 @@ class PosRepository(private val dao: PosDao) {
         dao.insertOrUpdateConfig(config)
     }
 
+    // Vouchers
+    fun getAllVouchers(): Flow<List<VoucherEntity>> = dao.getAllVouchers()
+    suspend fun getAllVouchersList(): List<VoucherEntity> = withContext(Dispatchers.IO) { dao.getAllVouchersList() }
+    suspend fun getVoucherByCode(code: String): VoucherEntity? = withContext(Dispatchers.IO) { dao.getVoucherByCode(code) }
+    suspend fun insertVoucher(voucher: VoucherEntity) = withContext(Dispatchers.IO) { dao.insertVoucher(voucher) }
+    suspend fun updateVoucher(voucher: VoucherEntity) = withContext(Dispatchers.IO) { dao.updateVoucher(voucher) }
+    suspend fun deleteVoucher(voucher: VoucherEntity) = withContext(Dispatchers.IO) { dao.deleteVoucher(voucher) }
+    suspend fun markVoucherAsUsed(code: String, bonNo: String, timestamp: Long = System.currentTimeMillis()) = withContext(Dispatchers.IO) {
+        dao.markVoucherAsUsed(code, bonNo, timestamp)
+    }
+
     suspend fun getStoreConfigOnce(): StoreConfigEntity = withContext(Dispatchers.IO) {
         dao.getStoreConfigOnce() ?: StoreConfigEntity()
     }
@@ -341,6 +363,21 @@ class PosRepository(private val dao: PosDao) {
             cashiers.put(obj)
         }
         root.put("cashiers", cashiers)
+
+        val vouchers = JSONArray()
+        dao.getAllVouchersList().forEach { v ->
+            val obj = JSONObject()
+            obj.put("kodeVoucher", v.kodeVoucher)
+            obj.put("nominalDiskon", v.nominalDiskon)
+            obj.put("minBelanja", v.minBelanja)
+            obj.put("tanggalMulai", v.tanggalMulai)
+            obj.put("tanggalKedaluwarsa", v.tanggalKedaluwarsa)
+            obj.put("isUsed", v.isUsed)
+            obj.put("usedAtBonNo", v.usedAtBonNo)
+            obj.put("bonNoAsal", v.bonNoAsal)
+            vouchers.put(obj)
+        }
+        root.put("vouchers", vouchers)
 
         root.toString(2)
     }
