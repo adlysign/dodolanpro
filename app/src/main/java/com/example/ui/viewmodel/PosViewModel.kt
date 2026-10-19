@@ -1848,5 +1848,12 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             onDone()
         }
     }
+
+    fun seedRealisticTransactions(onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.seedRealisticTransactions()
+            onDone()
+        }
+    }
 }
 

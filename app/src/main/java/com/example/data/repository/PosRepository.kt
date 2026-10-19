@@ -477,4 +477,109 @@ class PosRepository(private val dao: PosDao) {
         dao.clearShiftConfigs()
         com.example.data.local.AppDatabase.populateInitialData(dao)
     }
+
+    suspend fun seedRealisticTransactions() = withContext(Dispatchers.IO) {
+        val products = dao.getAllProductsList()
+        if (products.isEmpty()) return@withContext
+
+        val now = System.currentTimeMillis()
+        val dayMillis = 24L * 60 * 60 * 1000
+        val paymentMethods = listOf("TUNAI", "QRIS", "TUNAI", "DEBIT", "QRIS", "TRANSFER")
+        val cashiers = listOf(
+            Pair("002", "Kasir 1 (Siti)"),
+            Pair("003", "Kasir 2 (Budi)"),
+            Pair("001", "Administrator")
+        )
+        val memberNumbers = listOf("MBR-0001", "MBR-0002", "MBR-0003", "", "", "")
+
+        val generatedTxs = mutableListOf<TransactionEntity>()
+        val generatedItems = mutableListOf<TransactionItemEntity>()
+
+        var bonCounter = 100
+        val daysBack = 13
+        val hoursDistribution = listOf(8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21)
+
+        val cal = java.util.Calendar.getInstance()
+        for (dayOffset in daysBack downTo 0) {
+            val txCountForDay = if (dayOffset == 0) 6 else (3 + (dayOffset % 5))
+            for (i in 0 until txCountForDay) {
+                bonCounter++
+                val bonNo = "BON-2026${String.format("%04d", bonCounter)}"
+                cal.timeInMillis = now - (dayOffset * dayMillis)
+                val hour = hoursDistribution[(i + dayOffset) % hoursDistribution.size]
+                val minute = (i * 17) % 60
+                cal.set(java.util.Calendar.HOUR_OF_DAY, hour)
+                cal.set(java.util.Calendar.MINUTE, minute)
+                cal.set(java.util.Calendar.SECOND, 20)
+                val txTimestamp = cal.timeInMillis
+
+                val cashier = cashiers[(i + dayOffset) % cashiers.size]
+                val member = memberNumbers[(i * 3 + dayOffset) % memberNumbers.size]
+                val payment = paymentMethods[(i + dayOffset * 2) % paymentMethods.size]
+
+                val numItems = 1 + ((i + dayOffset) % 4)
+                var subtotal = 0.0
+                var diskonTotal = 0.0
+                val currentTxItems = mutableListOf<TransactionItemEntity>()
+
+                for (itemIdx in 0 until numItems) {
+                    val prod = products[(itemIdx * 3 + i + dayOffset) % products.size]
+                    val qty = 1 + ((itemIdx + i) % 3)
+                    val diskon = if (prod.isPromo) (prod.hargaJual * 0.1 * qty) else 0.0
+                    val sub = (prod.hargaJual * qty) - diskon
+                    subtotal += (prod.hargaJual * qty)
+                    diskonTotal += diskon
+
+                    currentTxItems.add(
+                        TransactionItemEntity(
+                            bonNo = bonNo,
+                            plu = prod.plu,
+                            barcode = prod.barcode,
+                            nama = prod.nama,
+                            hargaJual = prod.hargaJual,
+                            qty = qty,
+                            diskonItem = diskon,
+                            subtotalItem = sub,
+                            satuan = prod.satuan,
+                            isPromo = prod.isPromo,
+                            promoNote = if (prod.isPromo) prod.promoLabel else ""
+                        )
+                    )
+                }
+
+                val donasi = if (payment == "TUNAI" && (i % 2 == 0)) 500.0 else 0.0
+                val grandTotal = (subtotal - diskonTotal) + donasi
+                val bayarTunai = if (payment == "TUNAI") ((grandTotal / 10000).toInt() + 1) * 10000.0 else 0.0
+                val bayarNonTunai = if (payment != "TUNAI") grandTotal else 0.0
+                val kembalian = if (payment == "TUNAI") maxOf(0.0, bayarTunai - grandTotal) else 0.0
+
+                val tx = TransactionEntity(
+                    bonNo = bonNo,
+                    kasirNik = cashier.first,
+                    kasirNama = cashier.second,
+                    memberNo = member,
+                    subtotal = subtotal,
+                    diskonTotal = diskonTotal,
+                    donasi = donasi,
+                    grandTotal = grandTotal,
+                    caraBayar = payment,
+                    bayarTunai = bayarTunai,
+                    bayarNonTunai = bayarNonTunai,
+                    kembalian = kembalian,
+                    poinDigunakan = if (member.isNotBlank() && i % 3 == 0) 10 else 0,
+                    nilaiPotonganPoin = if (member.isNotBlank() && i % 3 == 0) 1000.0 else 0.0,
+                    kodeVoucher = if (i % 5 == 0) "VCR-HEMAT10K" else "",
+                    nilaiPotonganVoucher = if (i % 5 == 0) 10000.0 else 0.0,
+                    refPembayaran = if (payment != "TUNAI") "REF-${System.currentTimeMillis() % 1000000}" else "",
+                    timestamp = txTimestamp,
+                    isClerek = true
+                )
+                generatedTxs.add(tx)
+                generatedItems.addAll(currentTxItems)
+            }
+        }
+
+        dao.insertTransactions(generatedTxs)
+        dao.insertTransactionItems(generatedItems)
+    }
 }

@@ -135,6 +135,29 @@ object BluetoothPrinterHelper {
     }
 
     /**
+     * Send plain text or report formatted text to Bluetooth thermal printer.
+     */
+    suspend fun printText(
+        context: Context,
+        macAddress: String,
+        text: String,
+        feedLines: Int = 3,
+        autoCut: Boolean = true
+    ): Boolean {
+        val stream = java.io.ByteArrayOutputStream()
+        stream.write(byteArrayOf(0x1B, 0x40)) // ESC @ init
+        stream.write(text.toByteArray(Charsets.US_ASCII))
+        for (i in 0 until feedLines.coerceAtLeast(1)) {
+            stream.write(byteArrayOf(0x0A))
+        }
+        if (autoCut) {
+            stream.write(byteArrayOf(0x1D, 0x56, 0x42, 0x00))
+        }
+        val (ok, _) = printOverBluetooth(macAddress, stream.toByteArray())
+        return ok
+    }
+
+    /**
      * Share or export receipt to DodolanPro/Struk and open Android Intent.
      */
     fun shareReceiptText(context: Context, receiptText: String, title: String): Pair<Boolean, String> {
