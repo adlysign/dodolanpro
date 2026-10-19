@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,6 +32,8 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.local.entity.StoreConfigEntity
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.PosViewModel
+import com.example.ui.components.QrisBarcodeView
+import com.example.ui.components.LinearBarcode1DView
 import com.example.util.BluetoothPrinterHelper
 import com.example.util.ReceiptFormatter
 import kotlinx.coroutines.launch
@@ -90,6 +93,10 @@ fun PrinterSettingsScreen(
     var footerMsg by remember(cfg) { mutableStateOf(cfg.footerMsg) }
     var policyMsg by remember(cfg) { mutableStateOf(cfg.receiptPolicyMsg) }
     var wifiInfo by remember(cfg) { mutableStateOf(cfg.receiptWifiInfo) }
+    var qrisData by remember(cfg) { mutableStateOf(cfg.qrisData) }
+    var qrisMerchantName by remember(cfg) { mutableStateOf(cfg.qrisMerchantName) }
+    var qrisNmid by remember(cfg) { mutableStateOf(cfg.qrisNmid) }
+    var printQrisOnReceipt by remember(cfg) { mutableStateOf(cfg.printQrisOnReceipt) }
 
     // Temporary active configuration used for real-time live preview
     val activeConfig = remember(
@@ -97,7 +104,8 @@ fun PrinterSettingsScreen(
         autoPrint, autoCut, openCashDrawer, printCopies, feedLines, fontSize,
         showStoreName, showAlamat, showTelp, showNpwp, customGreeting, showBonNo, showKasir,
         showDateTime, showMemberInfo, showEarnedPoints, showPlu, showDiskon, showTotalItemQty,
-        showPpn, showPaymentDetail, showHemat, showVoucher, showBarcode, footerMsg, policyMsg, wifiInfo
+        showPpn, showPaymentDetail, showHemat, showVoucher, showBarcode, footerMsg, policyMsg, wifiInfo,
+        qrisData, qrisMerchantName, qrisNmid, printQrisOnReceipt
     ) {
         cfg.copy(
             receiptModel = receiptModel,
@@ -133,7 +141,11 @@ fun PrinterSettingsScreen(
             receiptShowBarcodeSimulation = showBarcode,
             footerMsg = footerMsg,
             receiptPolicyMsg = policyMsg,
-            receiptWifiInfo = wifiInfo
+            receiptWifiInfo = wifiInfo,
+            qrisData = qrisData,
+            qrisMerchantName = qrisMerchantName,
+            qrisNmid = qrisNmid,
+            printQrisOnReceipt = printQrisOnReceipt
         )
     }
 
@@ -193,10 +205,11 @@ fun PrinterSettingsScreen(
                 .background(PosSurface)
         ) {
             // Tab Navigation
-            TabRow(
+            ScrollableTabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = Color.White,
-                contentColor = Color(0xFF1B5E20)
+                contentColor = Color(0xFF1B5E20),
+                edgePadding = 12.dp
             ) {
                 Tab(
                     selected = selectedTab == 0,
@@ -207,19 +220,25 @@ fun PrinterSettingsScreen(
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("2. Kustomisasi Isi", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                    text = { Text("2. Format Isi", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
                     icon = { Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(18.dp)) }
                 )
                 Tab(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    text = { Text("3. Hardware Printer", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                    icon = { Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    text = { Text("3. Barcode & QRIS", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                    icon = { Icon(Icons.Default.QrCode2, contentDescription = null, modifier = Modifier.size(18.dp)) }
                 )
                 Tab(
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 },
-                    text = { Text("4. Live Pratinjau", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                    text = { Text("4. Hardware Printer", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                    icon = { Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                )
+                Tab(
+                    selected = selectedTab == 4,
+                    onClick = { selectedTab = 4 },
+                    text = { Text("5. Live Pratinjau", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
                     icon = { Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(18.dp)) }
                 )
             }
@@ -251,7 +270,7 @@ fun PrinterSettingsScreen(
                     fontSize = fontSize,
                     onFontSizeChanged = { fontSize = it },
                     sampleReceiptText = sampleReceiptText,
-                    onSwitchToPreview = { selectedTab = 3 }
+                    onSwitchToPreview = { selectedTab = 4 }
                 )
                 1 -> KustomisasiIsiTab(
                     showStoreName = showStoreName, onShowStoreNameChange = { showStoreName = it },
@@ -274,9 +293,20 @@ fun PrinterSettingsScreen(
                     showBarcode = showBarcode, onShowBarcodeChange = { showBarcode = it },
                     footerMsg = footerMsg, onFooterMsgChange = { footerMsg = it },
                     policyMsg = policyMsg, onPolicyMsgChange = { policyMsg = it },
-                    wifiInfo = wifiInfo, onWifiInfoChange = { wifiInfo = it }
+                    wifiInfo = wifiInfo, onWifiInfoChange = { wifiInfo = it },
+                    qrisData = qrisData, onQrisDataChange = { qrisData = it },
+                    qrisMerchantName = qrisMerchantName, onQrisMerchantNameChange = { qrisMerchantName = it },
+                    qrisNmid = qrisNmid, onQrisNmidChange = { qrisNmid = it },
+                    printQrisOnReceipt = printQrisOnReceipt, onPrintQrisOnReceiptChange = { printQrisOnReceipt = it },
+                    onOpenBarcodeQrisTab = { selectedTab = 2 }
                 )
-                2 -> HardwarePrinterTab(
+                2 -> BarcodeQrisTab(
+                    qrisData = qrisData, onQrisDataChange = { qrisData = it },
+                    qrisMerchantName = qrisMerchantName, onQrisMerchantNameChange = { qrisMerchantName = it },
+                    qrisNmid = qrisNmid, onQrisNmidChange = { qrisNmid = it },
+                    printQrisOnReceipt = printQrisOnReceipt, onPrintQrisOnReceiptChange = { printQrisOnReceipt = it }
+                )
+                3 -> HardwarePrinterTab(
                     printerType = printerType, onPrinterTypeChange = { printerType = it },
                     paperSize = paperSize, onPaperSizeChange = { paperSize = it },
                     btName = btName, onBtNameChange = { btName = it },
@@ -310,7 +340,7 @@ fun PrinterSettingsScreen(
                     isHardwareTesting = isHardwareTesting,
                     hardwareActionMsg = hardwareActionMsg
                 )
-                3 -> LivePratinjauTab(
+                4 -> LivePratinjauTab(
                     activeConfig = activeConfig,
                     sampleReceiptText = sampleReceiptText,
                     onSave = { saveConfig() },
@@ -618,7 +648,12 @@ private fun KustomisasiIsiTab(
     showBarcode: Boolean, onShowBarcodeChange: (Boolean) -> Unit,
     footerMsg: String, onFooterMsgChange: (String) -> Unit,
     policyMsg: String, onPolicyMsgChange: (String) -> Unit,
-    wifiInfo: String, onWifiInfoChange: (String) -> Unit
+    wifiInfo: String, onWifiInfoChange: (String) -> Unit,
+    qrisData: String, onQrisDataChange: (String) -> Unit,
+    qrisMerchantName: String, onQrisMerchantNameChange: (String) -> Unit,
+    qrisNmid: String, onQrisNmidChange: (String) -> Unit,
+    printQrisOnReceipt: Boolean, onPrintQrisOnReceiptChange: (Boolean) -> Unit,
+    onOpenBarcodeQrisTab: () -> Unit = {}
 ) {
     val textFieldColors = OutlinedTextFieldDefaults.colors(
         focusedTextColor = Color(0xFF0F172A),
@@ -747,6 +782,336 @@ private fun KustomisasiIsiTab(
                         placeholder = { Text("Contoh: Wi-Fi: Toko_Guest | IG: @dodolanpro") },
                         maxLines = 2,
                         colors = textFieldColors
+                    )
+                }
+            }
+        }
+
+        // 5. Kustomisasi Barcode & QRIS Pembayaran
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFEFF6FF),
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.QrCode2, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text("KUSTOMISASI QRIS & BARCODE PEMBAYARAN", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF1E3A8A))
+                                Text("Atur payload QRIS, nama merchant, dan kode barcode yang tampil di kasir & struk", fontSize = 11.sp, color = Color.Gray)
+                            }
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = onOpenBarcodeQrisTab,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1E3A8A))
+                    ) {
+                        Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Buka Kustomisasi Barcode & QRIS Lengkap ->", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+
+                    OutlinedTextField(
+                        value = qrisMerchantName,
+                        onValueChange = onQrisMerchantNameChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Nama Toko / Merchant QRIS") },
+                        placeholder = { Text("Contoh: DODOLAN PRO SUPERMARKET") },
+                        singleLine = true,
+                        colors = textFieldColors
+                    )
+
+                    OutlinedTextField(
+                        value = qrisNmid,
+                        onValueChange = onQrisNmidChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("NMID (National Merchant ID)") },
+                        placeholder = { Text("Contoh: ID1020030040050") },
+                        singleLine = true,
+                        colors = textFieldColors
+                    )
+
+                    OutlinedTextField(
+                        value = qrisData,
+                        onValueChange = onQrisDataChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("String / Payload QRIS Toko (Barcode Data)") },
+                        placeholder = { Text("Masukkan string data QRIS merchant Anda...") },
+                        maxLines = 3,
+                        colors = textFieldColors
+                    )
+
+                    ReceiptToggleRow("Cetak Kode QRIS pada Struk Kasir", printQrisOnReceipt, onPrintQrisOnReceiptChange)
+
+                    // Live Barcode Preview Box
+                    Surface(
+                        color = Color(0xFFF8FAFC),
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("Pratinjau Kode Barcode / QRIS Toko:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                QrisBarcodeView(
+                                    data = qrisData,
+                                    sizeDp = 130.dp
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                LinearBarcode1DView(
+                                    data = qrisNmid.ifBlank { "ID1020030040050" },
+                                    heightDp = 48.dp,
+                                    label = "NMID: ${qrisNmid.ifBlank { "ID1020030040050" }}",
+                                    modifier = Modifier.width(140.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                "Barcode ini akan otomatis muncul pada layar pembayaran kasir saat memilih QRIS.",
+                                fontSize = 10.sp,
+                                color = Color(0xFF64748B),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// TAB 3: DEDIKASI KUSTOMISASI BARCODE & QRIS
+// =====================================================================
+@Composable
+fun BarcodeQrisTab(
+    qrisData: String,
+    onQrisDataChange: (String) -> Unit,
+    qrisMerchantName: String,
+    onQrisMerchantNameChange: (String) -> Unit,
+    qrisNmid: String,
+    onQrisNmidChange: (String) -> Unit,
+    printQrisOnReceipt: Boolean,
+    onPrintQrisOnReceiptChange: (Boolean) -> Unit
+) {
+    val textFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Color(0xFF0F172A),
+        unfocusedTextColor = Color(0xFF0F172A),
+        focusedLabelColor = Color(0xFF1B5E20),
+        unfocusedLabelColor = Color(0xFF475569),
+        focusedContainerColor = Color.White,
+        unfocusedContainerColor = Color(0xFFF8FAFC),
+        focusedBorderColor = Color(0xFF2E7D32),
+        unfocusedBorderColor = Color(0xFFCBD5E1)
+    )
+    var previewMode by remember { mutableStateOf("BOTH") } // "QR", "1D", "BOTH"
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFEFF6FF),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.QrCode2, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(22.dp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text("PENGATURAN QRIS & BARCODE KASIR", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF1E3A8A))
+                            Text("Kustomisasi data QRIS toko dan kode barcode yang tampil di kasir & struk", fontSize = 11.sp, color = Color.Gray)
+                        }
+                    }
+
+                    // Quick Template Presets
+                    Text("Pilihan Template / Preset Cepat:", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF334155))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                onQrisMerchantNameChange("DodolanPro Supermarket")
+                                onQrisNmidChange("ID1020030040050")
+                                onQrisDataChange("00020101021226600016ID.CO.QRIS.WWW01189360050300000870940215000001234567890520454995802ID5910DODOLANPRO6007JAKARTA61051234062070703A016304")
+                            },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text("BCA QRIS", fontSize = 10.sp)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                onQrisMerchantNameChange("Dodolan Mandiri Store")
+                                onQrisNmidChange("ID1020040080099")
+                                onQrisDataChange("00020101021226600016ID.CO.QRIS.WWW01189360080000000123450215000009876543210520454995802ID5915DODOLAN STORE6007BANDUNG61054011162070703A016304")
+                            },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text("Mandiri QRIS", fontSize = 10.sp)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                onQrisMerchantNameChange("Dodolan GoPay Outlet")
+                                onQrisNmidChange("ID1020050011223")
+                                onQrisDataChange("00020101021226600016ID.CO.QRIS.WWW01189360091234567800010215000004561237890520454995802ID5912GOPAY DODOL6008SURABAYA61056023162070703A016304")
+                            },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text("GoPay QRIS", fontSize = 10.sp)
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = qrisMerchantName,
+                        onValueChange = onQrisMerchantNameChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Nama Toko / Merchant QRIS") },
+                        placeholder = { Text("Contoh: DODOLAN PRO SUPERMARKET") },
+                        singleLine = true,
+                        colors = textFieldColors
+                    )
+
+                    OutlinedTextField(
+                        value = qrisNmid,
+                        onValueChange = onQrisNmidChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("NMID (National Merchant ID)") },
+                        placeholder = { Text("Contoh: ID1020030040050") },
+                        singleLine = true,
+                        colors = textFieldColors
+                    )
+
+                    OutlinedTextField(
+                        value = qrisData,
+                        onValueChange = onQrisDataChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("String / Payload QRIS Toko (Barcode Data)") },
+                        placeholder = { Text("Masukkan string payload data QRIS merchant Anda...") },
+                        maxLines = 3,
+                        colors = textFieldColors
+                    )
+
+                    ReceiptToggleRow("Cetak Kode QRIS pada Struk Kasir", printQrisOnReceipt, onPrintQrisOnReceiptChange)
+                }
+            }
+        }
+
+        // Live Barcode Preview Box
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("PRATINJAU KODE BARCODE & QRIS TOKO", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                    Text("Tampilan barcode yang akan muncul saat kasir memilih pembayaran QRIS", fontSize = 10.sp, color = Color.Gray)
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(
+                            selected = previewMode == "QR",
+                            onClick = { previewMode = "QR" },
+                            label = { Text("QR Code (2D)", fontSize = 10.sp) }
+                        )
+                        FilterChip(
+                            selected = previewMode == "1D",
+                            onClick = { previewMode = "1D" },
+                            label = { Text("Barcode Garis (1D)", fontSize = 10.sp) }
+                        )
+                        FilterChip(
+                            selected = previewMode == "BOTH",
+                            onClick = { previewMode = "BOTH" },
+                            label = { Text("Keduanya", fontSize = 10.sp) }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    when (previewMode) {
+                        "QR" -> {
+                            QrisBarcodeView(data = qrisData, sizeDp = 160.dp)
+                        }
+                        "1D" -> {
+                            LinearBarcode1DView(
+                                data = qrisNmid.ifBlank { "ID1020030040050" },
+                                heightDp = 60.dp,
+                                label = "NMID: ${qrisNmid.ifBlank { "ID1020030040050" }}"
+                            )
+                        }
+                        "BOTH" -> {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                QrisBarcodeView(data = qrisData, sizeDp = 150.dp)
+                                LinearBarcode1DView(
+                                    data = qrisNmid.ifBlank { "ID1020030040050" },
+                                    heightDp = 44.dp,
+                                    label = "NMID: ${qrisNmid.ifBlank { "ID1020030040050" }}"
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Merchant: ${qrisMerchantName.ifBlank { "DodolanPro Supermarket" }} | NMID: ${qrisNmid.ifBlank { "ID1020030040050" }}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1E3A8A)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "✓ Ketika kasir menekan tombol QRIS di layar POS, barcode ini langsung tampil di layar untuk discan konsumen.",
+                        fontSize = 10.sp,
+                        color = Color(0xFF15803D),
+                        textAlign = TextAlign.Center
                     )
                 }
             }

@@ -60,7 +60,14 @@ data class StoreConfigEntity(
     val licenseType: String = "PRO_FULL",
     val licenseExpiryDate: String = "LIFETIME",
     val donasiDefault: Double = 0.0,
+    val isTaxActive: Boolean = false,
+    val taxName: String = "PPN",
+    val isTaxIncluded: Boolean = true,
     val ppnPercentage: Double = 0.0,
+    val qrisData: String = "00020101021226600016ID.CO.QRIS.WWW01189360050300000870940215000001234567890520454995802ID5910DODOLANPRO6007JAKARTA61051234062070703A016304",
+    val qrisMerchantName: String = "DodolanPro Supermarket",
+    val qrisNmid: String = "ID1020030040050",
+    val printQrisOnReceipt: Boolean = false,
     val printerPaperSize: String = "58mm", // 58mm, 80mm
     val printerType: String = "BLUETOOTH", // BLUETOOTH, USB, WIFI_LAN, SYSTEM_PRINT
     val bluetoothPrinterName: String = "",

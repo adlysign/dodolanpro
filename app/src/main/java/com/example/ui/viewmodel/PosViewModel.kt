@@ -533,8 +533,30 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         subtotal, _appliedPoin, _appliedVoucherDiscount, storeConfig
     ) { sub, poin, vDisc, cfg ->
         val poinNominal = if (cfg.poinAktif) poin * cfg.nilaiPerPoin else 0.0
-        val total = sub - poinNominal - vDisc
-        if (total < 0.0) 0.0 else total
+        val base = maxOf(0.0, sub - poinNominal - vDisc)
+        if (cfg.isTaxActive && !cfg.isTaxIncluded && cfg.ppnPercentage > 0.0) {
+            val tax = base * (cfg.ppnPercentage / 100.0)
+            base + tax
+        } else {
+            base
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    val taxAmount: StateFlow<Double> = combine(
+        subtotal, _appliedPoin, _appliedVoucherDiscount, storeConfig
+    ) { sub, poin, vDisc, cfg ->
+        if (cfg.isTaxActive && cfg.ppnPercentage > 0.0) {
+            val poinNominal = if (cfg.poinAktif) poin * cfg.nilaiPerPoin else 0.0
+            val base = maxOf(0.0, sub - poinNominal - vDisc)
+            val rate = cfg.ppnPercentage / 100.0
+            if (cfg.isTaxIncluded) {
+                base * rate / (1.0 + rate)
+            } else {
+                base * rate
+            }
+        } else {
+            0.0
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     val totalDiscount: StateFlow<Double> = combine(

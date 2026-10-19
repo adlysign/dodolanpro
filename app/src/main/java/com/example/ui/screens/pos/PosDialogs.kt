@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import com.example.ui.components.QrisBarcodeView
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -34,10 +36,15 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.example.data.local.entity.*
+import com.example.ui.components.QrisPaymentCard
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.CartItem
 import com.example.ui.viewmodel.PendingCart
 import com.example.util.DocExportManager
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -544,7 +551,7 @@ fun PaymentDialog(
     onDismiss: () -> Unit,
     onProcessPayment: (caraBayar: String, bayarTunai: Double, bayarNonTunai: Double, ref: String) -> Unit
 ) {
-    var selectedMethod by remember { mutableStateOf("TUNAI") } // TUNAI, CAMPURAN, WALLET, CARD, VOUCHER
+    var selectedMethod by remember { mutableStateOf("TUNAI") } // TUNAI, QRIS, CAMPURAN, WALLET, CARD
     var cashInput by remember { mutableStateOf("") }
     var nonCashInput by remember { mutableStateOf("") }
     var selectedWallet by remember { mutableStateOf("QRIS") }
@@ -555,6 +562,34 @@ fun PaymentDialog(
     var voucherMessage by remember { mutableStateOf("") }
     var isVoucherSuccess by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    // Otomatis arahkan kursor ke kolom nominal saat masuk pembayaran
+    LaunchedEffect(Unit) {
+        delay(60)
+        for (i in 1..4) {
+            try {
+                focusRequester.requestFocus()
+                keyboardController?.show()
+            } catch (_: Exception) {}
+            delay(100)
+        }
+    }
+
+    LaunchedEffect(selectedMethod) {
+        if (selectedMethod == "TUNAI" || selectedMethod == "CAMPURAN") {
+            delay(50)
+            for (i in 1..3) {
+                try {
+                    focusRequester.requestFocus()
+                    keyboardController?.show()
+                } catch (_: Exception) {}
+                delay(90)
+            }
+        }
+    }
 
     val numericCash = cashInput.toDoubleOrNull() ?: 0.0
     val numericNonCash = nonCashInput.toDoubleOrNull() ?: 0.0
@@ -581,7 +616,6 @@ fun PaymentDialog(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
                     .padding(14.dp)
             ) {
                 // Total Tagihan Header
@@ -660,9 +694,9 @@ fun PaymentDialog(
                     Spacer(modifier = Modifier.height(6.dp))
                 }
 
-                // Payment Method Selector Tabs: TUNAI, CAMPURAN, WALLET, CARD
+                // Payment Method Selector Tabs: TUNAI, QRIS, CAMPURAN, WALLET, CARD
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf("TUNAI", "CAMPURAN", "WALLET", "CARD").forEach { method ->
+                    listOf("TUNAI", "QRIS", "CAMPURAN", "WALLET", "CARD").forEach { method ->
                         val isSelected = selectedMethod == method
                         Button(
                             onClick = { selectedMethod = method },
@@ -682,18 +716,39 @@ fun PaymentDialog(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Method Specific Fields
-                Box(modifier = Modifier.weight(1f)) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
                     when (selectedMethod) {
                         "TUNAI" -> {
-                            Column(modifier = Modifier.fillMaxSize()) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
                                 Text("Uang Tunai Konsumen:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
                                 OutlinedTextField(
                                     value = cashInput,
                                     onValueChange = { cashInput = it },
-                                    modifier = Modifier.fillMaxWidth().testTag("cash_input_field"),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .focusRequester(focusRequester)
+                                        .testTag("cash_input_field"),
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                                    ),
+                                    keyboardActions = KeyboardActions(
+                                        onDone = {
+                                            keyboardController?.hide()
+                                            if (numericCash >= grandTotal) {
+                                                onProcessPayment("TUNAI", numericCash, 0.0, "TUNAI")
+                                            }
+                                        }
+                                    ),
+                                    placeholder = { Text("Ketik nominal pembayaran (Rp)...", color = Color.Gray) },
                                     textStyle = LocalTextStyle.current.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A)),
-                                    colors = retailTextFieldColors()
+                                    colors = retailTextFieldColors(),
+                                    singleLine = true
                                 )
 
                                 Spacer(modifier = Modifier.height(6.dp))
@@ -752,7 +807,7 @@ fun PaymentDialog(
 
                         "CAMPURAN" -> {
                             // Split Payment: Tunai + Non-Tunai
-                            Column(modifier = Modifier.fillMaxSize()) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = CardDefaults.cardColors(containerColor = RetailAmberLight)
@@ -776,8 +831,11 @@ fun PaymentDialog(
                                         val sisa = (grandTotal - cVal).coerceAtLeast(0.0)
                                         nonCashInput = sisa.toLong().toString()
                                     },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .focusRequester(focusRequester),
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    placeholder = { Text("Ketik nominal uang tunai...", color = Color.Gray) },
                                     singleLine = true,
                                     colors = retailTextFieldColors()
                                 )
@@ -805,11 +863,71 @@ fun PaymentDialog(
                                         )
                                     }
                                 }
+
+                                if (selectedCardBank == "QRIS") {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1))
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                "QRIS PEMBAYARAN CAMPURAN (Sisa: ${formatRupiah(numericNonCash)})",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF1E3A8A)
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            QrisBarcodeView(
+                                                data = storeConfig.qrisData.ifBlank { "00020101021226600016ID.CO.QRIS.WWW01189360050300000870940215000001234567890520454995802ID5910DODOLANPRO6007JAKARTA61051234062070703A016304" },
+                                                sizeDp = 135.dp
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                "NMID: ${storeConfig.qrisNmid.ifBlank { "ID1020030040050" }}",
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF64748B)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        "QRIS" -> {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                QrisPaymentCard(
+                                    merchantName = storeConfig.qrisMerchantName.ifBlank { storeConfig.storeName },
+                                    nmid = storeConfig.qrisNmid.ifBlank { "ID1020030040050" },
+                                    qrisData = storeConfig.qrisData.ifBlank { "00020101021226600016ID.CO.QRIS.WWW01189360050300000870940215000001234567890520454995802ID5910DODOLANPRO6007JAKARTA61051234062070703A016304" },
+                                    amount = grandTotal
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                OutlinedTextField(
+                                    value = walletPhone,
+                                    onValueChange = { walletPhone = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("No. Referensi / RRN (Opsional)") },
+                                    placeholder = { Text("Contoh: RRN-1029384756") },
+                                    singleLine = true,
+                                    colors = retailTextFieldColors()
+                                )
                             }
                         }
 
                         "WALLET" -> {
-                            Column(modifier = Modifier.fillMaxSize()) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
                                 Text("Pilih E-Wallet / QRIS:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     walletOptions.take(4).forEach { w ->
@@ -821,13 +939,25 @@ fun PaymentDialog(
                                         FilterChip(selected = selectedWallet == w, onClick = { selectedWallet = w }, label = { Text(w, fontSize = 9.sp) })
                                     }
                                 }
+
                                 Spacer(modifier = Modifier.height(8.dp))
+
+                                if (selectedWallet == "QRIS") {
+                                    QrisPaymentCard(
+                                        merchantName = storeConfig.qrisMerchantName.ifBlank { storeConfig.storeName },
+                                        nmid = storeConfig.qrisNmid.ifBlank { "ID1020030040050" },
+                                        qrisData = storeConfig.qrisData.ifBlank { "00020101021226600016ID.CO.QRIS.WWW01189360050300000870940215000001234567890520454995802ID5910DODOLANPRO6007JAKARTA61051234062070703A016304" },
+                                        amount = grandTotal
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                }
+
                                 OutlinedTextField(
                                     value = walletPhone,
                                     onValueChange = { walletPhone = it },
                                     modifier = Modifier.fillMaxWidth(),
-                                    label = { Text("No. HP / Kode QRIS") },
-                                    placeholder = { Text("08xxxxxxxxxx") },
+                                    label = { Text("No. HP / Kode QRIS / Ref") },
+                                    placeholder = { Text("08xxxxxxxxxx atau Ref") },
                                     singleLine = true,
                                     colors = retailTextFieldColors()
                                 )
@@ -922,6 +1052,14 @@ fun PaymentDialog(
                                     } else {
                                         onProcessPayment("TUNAI", numericCash, 0.0, "TUNAI")
                                     }
+                                }
+                                "QRIS" -> {
+                                    onProcessPayment(
+                                        "QRIS",
+                                        0.0,
+                                        grandTotal,
+                                        "QRIS NMID:${storeConfig.qrisNmid.ifBlank { "ID1020030040050" }} ${if (walletPhone.isNotBlank()) "Ref:$walletPhone" else ""}".trim()
+                                    )
                                 }
                                 "CAMPURAN" -> {
                                     if ((numericCash + numericNonCash) < grandTotal) {

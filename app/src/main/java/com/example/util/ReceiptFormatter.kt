@@ -307,9 +307,20 @@ object ReceiptFormatter {
             appendLine(justify("Kembalian", "Rp ${formatRupiah(tx.kembalian)}", w))
         }
 
-        if (cfg.receiptShowPpn) {
-            val ppn = tx.grandTotal * 0.11 / 1.11
-            appendLine(justify("Termasuk PPN 11%", "Rp ${formatRupiah(ppn)}", w))
+        if (cfg.receiptShowPpn && cfg.isTaxActive && cfg.ppnPercentage > 0.0) {
+            val rate = cfg.ppnPercentage / 100.0
+            val taxAmount = if (cfg.isTaxIncluded) {
+                tx.grandTotal * rate / (1.0 + rate)
+            } else {
+                tx.subtotal * rate
+            }
+            val rateStr = if (cfg.ppnPercentage % 1.0 == 0.0) "${cfg.ppnPercentage.toInt()}%" else "${cfg.ppnPercentage}%"
+            val label = if (cfg.isTaxIncluded) {
+                "Termasuk ${cfg.taxName} $rateStr"
+            } else {
+                "${cfg.taxName} $rateStr"
+            }
+            appendLine(justify(label, "Rp ${formatRupiah(taxAmount)}", w))
         }
 
         if (cfg.receiptShowHemat && tx.diskonTotal > 0) {
@@ -341,6 +352,19 @@ object ReceiptFormatter {
         if (cfg.receiptWifiInfo.isNotBlank()) {
             appendLine(sep)
             appendLine(center(cfg.receiptWifiInfo, w))
+        }
+
+        if (cfg.printQrisOnReceipt || tx.caraBayar == "QRIS") {
+            appendLine(sep)
+            appendLine(center("QRIS PEMBAYARAN DIGITAL", w))
+            if (cfg.qrisMerchantName.isNotBlank()) {
+                appendLine(center(cfg.qrisMerchantName.uppercase(), w))
+            }
+            if (cfg.qrisNmid.isNotBlank()) {
+                appendLine(center("NMID: ${cfg.qrisNmid}", w))
+            }
+            appendLine(center("|||| | ||||| || |||||| | |||", w))
+            appendLine(center("SCAN DENGAN M-BANKING / E-WALLET", w))
         }
 
         if (cfg.receiptShowBarcodeSimulation) {
@@ -457,8 +481,21 @@ object ReceiptFormatter {
             appendLine(justify("Diskon Promo", "-Rp ${formatRupiah(tx.diskonTotal)}", w))
         }
 
-        val pb1 = tx.grandTotal * 0.10 / 1.10
-        appendLine(justify("PB1 (Pajak Resto 10%)", "Rp ${formatRupiah(pb1)}", w))
+        if (cfg.receiptShowPpn && cfg.isTaxActive && cfg.ppnPercentage > 0.0) {
+            val rate = cfg.ppnPercentage / 100.0
+            val taxAmount = if (cfg.isTaxIncluded) {
+                tx.grandTotal * rate / (1.0 + rate)
+            } else {
+                tx.subtotal * rate
+            }
+            val rateStr = if (cfg.ppnPercentage % 1.0 == 0.0) "${cfg.ppnPercentage.toInt()}%" else "${cfg.ppnPercentage}%"
+            val label = if (cfg.isTaxIncluded) {
+                "Termasuk ${cfg.taxName} $rateStr"
+            } else {
+                "${cfg.taxName} $rateStr"
+            }
+            appendLine(justify(label, "Rp ${formatRupiah(taxAmount)}", w))
+        }
 
         appendLine(line('=', w))
         appendLine(justify("TOTAL TAGIHAN", "Rp ${formatRupiah(tx.grandTotal)}", w))

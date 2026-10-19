@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
         PurchaseOrderEntity::class,
         VoucherEntity::class
     ],
-    version = 7,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -77,6 +77,23 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE store_config ADD COLUMN isTaxActive INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN taxName TEXT NOT NULL DEFAULT 'PPN'")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN isTaxIncluded INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
+        private val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE store_config ADD COLUMN qrisData TEXT NOT NULL DEFAULT '00020101021226600016ID.CO.QRIS.WWW01189360050300000870940215000001234567890520454995802ID5910DODOLANPRO6007JAKARTA61051234062070703A016304'")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN qrisMerchantName TEXT NOT NULL DEFAULT 'DodolanPro Supermarket'")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN qrisNmid TEXT NOT NULL DEFAULT 'ID1020030040050'")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN printQrisOnReceipt INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val appContext = context.applicationContext
@@ -85,7 +102,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "dodolan_pro_db"
                 )
-                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     .fallbackToDestructiveMigration()
                     .addCallback(DatabaseCallback(appContext, scope))
                     .build()

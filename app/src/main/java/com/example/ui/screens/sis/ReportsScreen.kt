@@ -28,7 +28,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.local.entity.ClerekEntity
 import com.example.data.local.entity.ProductEntity
 import com.example.data.local.entity.StoreConfigEntity
 import com.example.data.local.entity.TransactionEntity
@@ -42,8 +41,6 @@ import com.example.util.DocExportManager
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
-
-data class SisReportDef(val id: String, val category: String, val name: String, val desc: String)
 
 enum class ReportTimeFilter(val label: String, val days: Int) {
     TODAY("Hari Ini", 1),
@@ -64,16 +61,11 @@ fun ReportsScreen(
     val allTransactions by viewModel.allTransactions.collectAsState()
     val allTransactionItems by viewModel.allTransactionItems.collectAsState()
     val allProducts by viewModel.allProducts.collectAsState()
-    val allClerek by viewModel.allClerekRecords.collectAsState()
-    val allPurchases by viewModel.allPurchases.collectAsState()
-    val allStockOpnames by viewModel.allStockOpnames.collectAsState()
-    val allReturns by viewModel.allReturns.collectAsState()
     val storeConfig by viewModel.storeConfig.collectAsState()
 
     var selectedMainTab by remember { mutableIntStateOf(0) }
     var selectedTimeFilter by remember { mutableStateOf(ReportTimeFilter.LAST_7_DAYS) }
     var showExportDialog by remember { mutableStateOf(false) }
-    var selectedSisReport by remember { mutableStateOf<SisReportDef?>(null) }
     var productSearchQuery by remember { mutableStateOf("") }
     var selectedProductFilter by remember { mutableStateOf("SEMUA") } // SEMUA, MARGIN_TINGGI, STOK_MENIPIS, PROMO
 
@@ -366,17 +358,6 @@ fun ReportsScreen(
                             Icon(Icons.Default.PriceCheck, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("MARGIN & PRODUK", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                )
-                Tab(
-                    selected = selectedMainTab == 2,
-                    onClick = { selectedMainTab = 2 },
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("DOKUMEN SIS", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 )
@@ -864,85 +845,6 @@ fun ReportsScreen(
                         }
                     }
                 }
-
-                2 -> {
-                    // TAB 2: Official SIS .NET Catalog
-                    val sisReports = remember {
-                        listOf(
-                            SisReportDef("23_24", "PENJUALAN", "23 24 Gabungan Kasir", "Laporan Penjualan dan Setoran Per Kasir Lengkap"),
-                            SisReportDef("25", "PENJUALAN", "25 Jumlah No. Bon", "Laporan Jumlah Nomor Bon Per Kasir & Jam"),
-                            SisReportDef("18", "PENJUALAN", "18 Penjualan Item Harian", "Laporan Harian Penjualan Item Toko & Qty"),
-                            SisReportDef("06", "INVENTORI", "06 LPMP Mutasi Persediaan", "Laporan Harian Posisi Mutasi Persediaan Stok Fisik"),
-                            SisReportDef("01", "INVENTORI", "01 LSOH Stock Out", "Laporan Stock Out Item Kosong Per Hari"),
-                            SisReportDef("05", "INVENTORI", "05 Mutasi Selisih Stok", "Laporan Posisi Mutasi Selisih Stok Barang Opname"),
-                            SisReportDef("DAILY", "PERFORM", "Daily Performance Toko", "Report Daily Performance & Target Toko"),
-                            SisReportDef("TOP100", "PERFORM", "100 Item Paling Laris", "Daftar Produk Terlaris dan Kontribusi Profit"),
-                            SisReportDef("MARGIN", "PERFORM", "Margin Kontribusi PLU", "Report Margin dan Kontribusi Margin Per PLU"),
-                            SisReportDef("36", "REGISTER", "36 Register LPB Toko", "Register Dokumen Toko Penerimaan Barang LPB"),
-                            SisReportDef("41", "REGISTER", "41 Register NRB Toko", "Register Dokumen Toko Nota Retur Barang"),
-                            SisReportDef("39", "REGISTER", "39 Register Koreksi Toko", "Register Dokumen Koreksi Pemusnahan BCTB")
-                        )
-                    }
-
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        item {
-                            Text(
-                                "KATALOG LAPORAN RESMI ODNER TOKO (SIS .NET):",
-                                fontSize = 11.sp,
-                                color = GrayText,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        items(sisReports) { rep ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { selectedSisReport = rep },
-                                colors = CardDefaults.cardColors(containerColor = Color.White),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            rep.name,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = RetailNavy
-                                        )
-                                        Text(rep.desc, fontSize = 10.sp, color = Color.Gray)
-                                    }
-
-                                    Button(
-                                        onClick = { selectedSisReport = rep },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = RetailRedPrimary,
-                                            contentColor = Color.White
-                                        ),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                        modifier = Modifier.height(32.dp)
-                                    ) {
-                                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("LIHAT", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -1082,92 +984,6 @@ fun ReportsScreen(
             }
         )
     }
-
-    // Modal SIS Report Viewer Dialog
-    selectedSisReport?.let { rep ->
-        AlertDialog(
-            onDismissRequest = { selectedSisReport = null },
-            title = {
-                Text("LAPORAN: ${rep.name.uppercase()}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            },
-            text = {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFAFAFA)),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder)
-                ) {
-                    val reportText = remember(rep, allTransactions, allProducts, storeConfig) {
-                        generateDetailedSisReportText(
-                            rep = rep,
-                            transactions = allTransactions,
-                            items = allTransactionItems,
-                            products = allProducts,
-                            clereks = allClerek,
-                            storeConfig = storeConfig
-                        )
-                    }
-
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 380.dp)
-                            .padding(10.dp)
-                    ) {
-                        item {
-                            Text(
-                                text = reportText,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 9.sp,
-                                lineHeight = 13.sp,
-                                color = Color.Black
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Row {
-                    Button(
-                        onClick = {
-                            val reportText = generateDetailedSisReportText(
-                                rep = rep,
-                                transactions = allTransactions,
-                                items = allTransactionItems,
-                                products = allProducts,
-                                clereks = allClerek,
-                                storeConfig = storeConfig
-                            )
-                            val (ok, file) = DocExportManager.saveDocument(
-                                context = context,
-                                subfolder = "Laporan",
-                                prefix = "SIS_${rep.id}",
-                                extension = "txt",
-                                content = reportText
-                            )
-                            if (ok) {
-                                Toast.makeText(context, "Tersimpan di ${file.name}", Toast.LENGTH_SHORT).show()
-                                DocExportManager.openDocument(context, file)
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = RetailNavy, contentColor = Color.White)
-                    ) {
-                        Icon(Icons.Default.SaveAlt, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("SIMPAN TXT", fontSize = 11.sp)
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Button(
-                        onClick = { selectedSisReport = null },
-                        colors = ButtonDefaults.buttonColors(containerColor = RetailRedPrimary, contentColor = Color.White)
-                    ) {
-                        Text("TUTUP", fontSize = 11.sp)
-                    }
-                }
-            }
-        )
-    }
 }
 
 /**
@@ -1245,116 +1061,3 @@ fun generateStorePerformanceText(
     }
 }
 
-/**
- * Detailed text generator for official SIS .NET reports with real DB figures
- */
-fun generateDetailedSisReportText(
-    rep: SisReportDef,
-    transactions: List<TransactionEntity>,
-    items: List<TransactionItemEntity>,
-    products: List<ProductEntity>,
-    clereks: List<ClerekEntity>,
-    storeConfig: StoreConfigEntity
-): String {
-    val nowStr = SimpleDateFormat("dd-MM-yyyy HH:mm:ss", Locale.getDefault()).format(Date())
-    return buildString {
-        appendLine("==========================================")
-        appendLine("PT. SUMBER ALFARIA TRIJAYA TBK")
-        appendLine("${storeConfig.storeName} (${storeConfig.storeCode})")
-        appendLine("REPORT: ${rep.name.uppercase()}")
-        appendLine("Waktu Cetak : $nowStr")
-        appendLine("Database   : SQLite Room (Offline Encrypted)")
-        appendLine("------------------------------------------")
-
-        when (rep.id) {
-            "23_24" -> {
-                appendLine("LAPORAN 23/24 GABUNGAN PENJUALAN KASIR:")
-                val totalOmset = transactions.sumOf { it.grandTotal }
-                appendLine("Total Transaksi : ${transactions.size} BON")
-                appendLine("Total Omset     : ${formatRupiah(totalOmset)}")
-                appendLine("Tunai           : ${formatRupiah(transactions.filter { it.caraBayar == "TUNAI" }.sumOf { it.grandTotal })}")
-                appendLine("Non Tunai       : ${formatRupiah(transactions.filter { it.caraBayar != "TUNAI" }.sumOf { it.grandTotal })}")
-                appendLine("Donasiku        : ${formatRupiah(transactions.sumOf { it.donasi })}")
-                appendLine("Total Pot. Poin : ${formatRupiah(transactions.sumOf { it.nilaiPotonganPoin })}")
-                appendLine("Total Voucher   : ${formatRupiah(transactions.sumOf { it.nilaiPotonganVoucher })}")
-                appendLine("------------------------------------------")
-                appendLine("REKAP PER KASIR:")
-                transactions.groupBy { it.kasirNik }.forEach { (nik, txList) ->
-                    appendLine("Kasir: ${txList.first().kasirNama} (NIK: $nik)")
-                    appendLine("  Jumlah Bon  : ${txList.size} Transaksi")
-                    appendLine("  Total Omset : ${formatRupiah(txList.sumOf { it.grandTotal })}")
-                }
-            }
-            "25" -> {
-                appendLine("LAPORAN 25 JUMLAH NO. BON PER KASIR:")
-                transactions.groupBy { it.kasirNik }.forEach { (nik, txList) ->
-                    appendLine("Kasir: ${txList.first().kasirNama} (NIK: $nik)")
-                    val minBon = txList.minByOrNull { it.bonNo }?.bonNo ?: "-"
-                    val maxBon = txList.maxByOrNull { it.bonNo }?.bonNo ?: "-"
-                    appendLine("  No Bon Awal : $minBon")
-                    appendLine("  No Bon Akhir: $maxBon")
-                    appendLine("  Total Bon   : ${txList.size} Lembar")
-                }
-            }
-            "18" -> {
-                appendLine("LAPORAN 18 PENJUALAN ITEM HARIAN:")
-                appendLine("PLU    | NAMA BARANG               | QTY | SUB TOTAL")
-                appendLine("--------------------------------------------------")
-                val grouped = items.groupBy { it.plu }
-                grouped.forEach { (plu, itemList) ->
-                    val name = itemList.first().nama.take(22).padEnd(22)
-                    val qty = itemList.sumOf { it.qty }.toString().padStart(3)
-                    val sub = formatRupiah(itemList.sumOf { it.subtotalItem }).padStart(12)
-                    appendLine("${plu.padEnd(6)} | $name | $qty | $sub")
-                }
-            }
-            "06" -> {
-                appendLine("LPMP (POSISI MUTASI PERSEDIAAN STOK):")
-                appendLine("Total SKU Aktif : ${products.size} PLU")
-                val totalStok = products.sumOf { it.stok }
-                val totalNilai = products.sumOf { it.stok * it.hargaBeli }
-                val totalNilaiJual = products.sumOf { it.stok * it.hargaJual }
-                appendLine("Total Fisik OnHand: $totalStok Unit")
-                appendLine("Nilai HPP Modal   : ${formatRupiah(totalNilai)}")
-                appendLine("Estimasi NilaiJual: ${formatRupiah(totalNilaiJual)}")
-                appendLine("Potensi Keuntungan: ${formatRupiah(totalNilaiJual - totalNilai)}")
-                appendLine("Item Stok Menipis : ${products.count { it.stok <= it.minStok }} PLU")
-            }
-            "TOP100" -> {
-                appendLine("DAFTAR PRODUK PALING LARIS TOKO:")
-                val top = items.groupBy { it.plu }
-                    .entries
-                    .sortedByDescending { it.value.sumOf { x -> x.qty } }
-                    .take(15)
-                top.forEachIndexed { idx, entry ->
-                    val prod = products.find { it.plu == entry.key }
-                    val nama = prod?.nama ?: entry.value.first().nama
-                    val qty = entry.value.sumOf { it.qty }
-                    val total = entry.value.sumOf { it.subtotalItem }
-                    appendLine("${(idx + 1).toString().padStart(2)}. $nama")
-                    appendLine("    Terjual: $qty pcs | Omset: ${formatRupiah(total)}")
-                }
-            }
-            "MARGIN" -> {
-                appendLine("LAPORAN MARGIN KONTRIBUSI PER PRODUK:")
-                appendLine("PLU    | NAMA                 | MARGIN % | LABA/UNIT")
-                appendLine("--------------------------------------------------")
-                products.take(20).forEach { p ->
-                    val marginRp = p.hargaJual - p.hargaBeli
-                    val marginPct = if (p.hargaJual > 0) (marginRp / p.hargaJual) * 100 else 0.0
-                    val name = p.nama.take(18).padEnd(18)
-                    val pct = String.format("%.1f%%", marginPct).padStart(7)
-                    val laba = formatRupiah(marginRp).padStart(11)
-                    appendLine("${p.plu.padEnd(6)} | $name | $pct | $laba")
-                }
-            }
-            else -> {
-                appendLine("STATUS DOKUMEN: LENGKAP & TERSINKRONISASI")
-                appendLine("Total Dokumen Tercatat: ${transactions.size} Penjualan, ${products.size} Produk")
-                appendLine("Status Rekapitulasi   : Valid")
-                appendLine("Penyimpanan           : Lokal SQLite Room Database")
-            }
-        }
-        appendLine("==========================================")
-    }
-}
