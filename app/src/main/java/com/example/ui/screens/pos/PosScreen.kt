@@ -1998,9 +1998,14 @@ fun BarcodeSearchBar(
         singleLine = true,
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = RetailRedPrimary,
-            unfocusedBorderColor = PosCardBorder,
-            focusedTextColor = Color.Black,
-            unfocusedTextColor = Color.Black
+            unfocusedBorderColor = Color(0xFF94A3B8),
+            focusedTextColor = Color(0xFF0F172A),
+            unfocusedTextColor = Color(0xFF0F172A),
+            focusedContainerColor = Color.White,
+            unfocusedContainerColor = Color.White,
+            cursorColor = RetailRedPrimary,
+            focusedPlaceholderColor = Color(0xFF475569),
+            unfocusedPlaceholderColor = Color(0xFF64748B)
         ),
         shape = RoundedCornerShape(6.dp)
     )

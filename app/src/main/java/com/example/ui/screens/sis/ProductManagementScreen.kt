@@ -134,17 +134,12 @@ fun ProductManagementScreen(
                     }
                 },
                 singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.Black,
-                    unfocusedTextColor = Color.Black,
-                    focusedBorderColor = RetailNavy,
-                    unfocusedBorderColor = PosCardBorder
-                )
+                colors = retailTextFieldColors()
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Filter Chips Status
+            // Filter Chips Status (Kontras tinggi, anti-putih, teks terbaca jelas)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -161,22 +156,22 @@ fun ProductManagementScreen(
                     }
                     Surface(
                         shape = RoundedCornerShape(20.dp),
-                        color = if (isSel) RetailNavy else Color(0xFFF1F5F9),
-                        border = BorderStroke(1.dp, if (isSel) RetailNavy else Color(0xFFCBD5E1)),
+                        color = if (isSel) RetailNavy else Color(0xFFE2E8F0),
+                        border = BorderStroke(1.5.dp, if (isSel) RetailNavy else Color(0xFF94A3B8)),
                         modifier = Modifier.clickable { selectedFilter = filter }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (isSel) {
-                                Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp).padding(end = 3.dp))
+                                Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp).padding(end = 4.dp))
                             }
                             Text(
                                 text = labelText,
                                 fontSize = 11.sp,
-                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.SemiBold,
-                                color = if (isSel) Color.White else Color.Black
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSel) Color.White else Color(0xFF0F172A)
                             )
                         }
                     }
@@ -185,7 +180,7 @@ fun ProductManagementScreen(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Filter Chips Kategori (Teks Kategori yang tidak dipilih berwarna HITAM pekat agar jelas terlihat)
+            // Filter Chips Kategori (Tampilan jelas, warna kontras, tidak putih polos sebelum dipilih)
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -195,22 +190,24 @@ fun ProductManagementScreen(
                     val isSel = selectedCategory == cat
                     Surface(
                         shape = RoundedCornerShape(20.dp),
-                        color = if (isSel) RetailNavy else Color(0xFFF1F5F9),
-                        border = BorderStroke(1.dp, if (isSel) RetailNavy else Color(0xFFCBD5E1)),
+                        color = if (isSel) RetailNavy else Color(0xFFE2E8F0),
+                        border = BorderStroke(1.5.dp, if (isSel) RetailNavy else Color(0xFF94A3B8)),
                         modifier = Modifier.clickable { selectedCategory = cat }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (isSel) {
-                                Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp).padding(end = 3.dp))
+                                Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp).padding(end = 4.dp))
+                            } else {
+                                Icon(Icons.Default.Sell, contentDescription = null, tint = Color(0xFF475569), modifier = Modifier.size(12.dp).padding(end = 4.dp))
                             }
                             Text(
                                 text = cat,
                                 fontSize = 11.sp,
-                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.SemiBold,
-                                color = if (isSel) Color.White else Color.Black // Teks kategori tidak dipilih berwarna hitam pekat
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSel) Color.White else Color(0xFF0F172A)
                             )
                         }
                     }
@@ -469,12 +466,7 @@ fun ProductEditorDialog(
     val hargaJualNum = hargaJualStr.toDoubleOrNull() ?: 0.0
     val marginPersen = if (hargaJualNum > 0) ((hargaJualNum - hargaBeliNum) / hargaJualNum * 100.0) else 0.0
 
-    val tfColors = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = Color.Black,
-        unfocusedTextColor = Color.Black,
-        focusedBorderColor = RetailNavy,
-        unfocusedBorderColor = PosCardBorder
-    )
+    val tfColors = retailTextFieldColors()
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -629,28 +621,36 @@ fun ProductEditorDialog(
                                 )
                             }
 
-                            // Quick Category Selection Chips (Teks kategori tidak dipilih berwarna hitam pekat)
-                            Text("Pilihan Kategori Cepat:", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                            // Quick Category Selection Chips (Teks jelas, anti-putih sebelum dipilih)
+                            Text("Pilihan Kategori Cepat:", fontSize = 11.sp, color = Color(0xFF0F172A), fontWeight = FontWeight.Bold)
                             LazyRow(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 val commonCats = listOf("Umum", "Makanan", "Minuman", "Snack", "Sembako", "Rokok", "Personal Care", "Household", "Elektronik")
                                 items(commonCats) { cat ->
                                     val isSel = kategori.equals(cat, ignoreCase = true)
                                     Surface(
                                         shape = RoundedCornerShape(16.dp),
-                                        color = if (isSel) RetailNavy else Color(0xFFF1F5F9),
-                                        border = BorderStroke(1.dp, if (isSel) RetailNavy else Color(0xFFCBD5E1)),
+                                        color = if (isSel) RetailNavy else Color(0xFFE2E8F0),
+                                        border = BorderStroke(1.5.dp, if (isSel) RetailNavy else Color(0xFF94A3B8)),
                                         modifier = Modifier.clickable { kategori = cat }
                                     ) {
-                                        Text(
-                                            cat,
-                                            fontSize = 10.sp,
-                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.SemiBold,
-                                            color = if (isSel) Color.White else Color.Black, // Teks kategori tidak dipilih berwarna hitam
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                                        )
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (isSel) {
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                                                Spacer(modifier = Modifier.width(3.dp))
+                                            }
+                                            Text(
+                                                cat,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSel) Color.White else Color(0xFF0F172A)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -659,27 +659,35 @@ fun ProductEditorDialog(
                             Text("SATUAN DASAR & STOK", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = RetailNavy)
                             Spacer(modifier = Modifier.height(6.dp))
 
-                            Text("Pilih Satuan Dasar:", fontSize = 11.sp, color = Color.Black)
+                            Text("Pilih Satuan Dasar:", fontSize = 11.sp, color = Color(0xFF0F172A), fontWeight = FontWeight.Bold)
                             LazyRow(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 val commonSatuans = listOf("PCS", "BKS", "BOTOL", "CUP", "SACHET", "KG", "LUSIN", "PACK")
                                 items(commonSatuans) { s ->
                                     val isSel = satuan.equals(s, ignoreCase = true)
                                     Surface(
                                         shape = RoundedCornerShape(16.dp),
-                                        color = if (isSel) RetailNavy else Color(0xFFF1F5F9),
-                                        border = BorderStroke(1.dp, if (isSel) RetailNavy else Color(0xFFCBD5E1)),
+                                        color = if (isSel) RetailNavy else Color(0xFFE2E8F0),
+                                        border = BorderStroke(1.5.dp, if (isSel) RetailNavy else Color(0xFF94A3B8)),
                                         modifier = Modifier.clickable { satuan = s }
                                     ) {
-                                        Text(
-                                            s,
-                                            fontSize = 10.sp,
-                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.SemiBold,
-                                            color = if (isSel) Color.White else Color.Black,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                                        )
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (isSel) {
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                                                Spacer(modifier = Modifier.width(3.dp))
+                                            }
+                                            Text(
+                                                s,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSel) Color.White else Color(0xFF0F172A)
+                                            )
+                                        }
                                     }
                                 }
                             }

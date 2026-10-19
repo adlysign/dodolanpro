@@ -92,6 +92,9 @@ interface PosDao {
     @Query("UPDATE members SET poin = CASE WHEN poin >= :points THEN poin - :points ELSE 0 END WHERE memberNo = :memberNo")
     suspend fun deductMemberPoints(memberNo: String, points: Int)
 
+    @Query("UPDATE members SET poin = :points WHERE memberNo = :memberNo")
+    suspend fun setMemberPoints(memberNo: String, points: Int)
+
     // Shift Configs
     @Query("SELECT * FROM shift_configs ORDER BY shiftNumber ASC")
     fun getAllShiftConfigs(): Flow<List<ShiftConfigEntity>>
@@ -323,6 +326,9 @@ interface PosDao {
 
     @Query("UPDATE vouchers SET isUsed = 1, usedAtBonNo = :bonNo, usedAtTimestamp = :timestamp WHERE UPPER(kodeVoucher) = UPPER(:code)")
     suspend fun markVoucherAsUsed(code: String, bonNo: String, timestamp: Long)
+
+    @Query("UPDATE vouchers SET isUsed = :isUsed, usedAtBonNo = CASE WHEN :isUsed = 0 THEN '' ELSE usedAtBonNo END WHERE UPPER(kodeVoucher) = UPPER(:code)")
+    suspend fun markVoucherStatus(code: String, isUsed: Boolean)
 
     @Query("DELETE FROM vouchers")
     suspend fun clearVouchers()

@@ -1,6 +1,7 @@
 package com.example.ui.screens.sis
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -153,6 +155,53 @@ fun StoreConfigScreen(
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true
                         )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Surface(
+                            color = Color(0xFFF3E8FF),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD8B4FE)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Stars, contentDescription = null, tint = Color(0xFF7E22CE))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text("PROGRAM VOUCHER & POIN TOKO", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF581C87))
+                                    Text("Pengaturan nilai tukar poin member, syarat belanja, serta voucher struk kasir dapat dikelola pada menu 'Voucher & Poin'.", fontSize = 11.sp, color = Color(0xFF6B21A8))
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Surface(
+                            color = Color(0xFFE8F5E9),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFA5D6A7)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.navigateTo(com.example.ui.viewmodel.PosNavDestination.PENGATURAN_PRINTER)
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Print, contentDescription = null, tint = Color(0xFF2E7D32))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("PENGATURAN MODEL STRUK & PRINTER", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF1B5E20))
+                                    Text("Pilih model struk (Ritel, Minimalis, Cafe, Elegan), ukuran kertas 58mm/80mm, serta koneksi Bluetooth printer thermal.", fontSize = 11.sp, color = Color(0xFF2E7D32))
+                                }
+                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFF2E7D32))
+                            }
+                        }
 
                         if (feedbackMsg.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(8.dp))

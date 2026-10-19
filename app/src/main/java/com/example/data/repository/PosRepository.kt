@@ -78,6 +78,18 @@ class PosRepository(private val dao: PosDao) {
         dao.deleteMember(member)
     }
 
+    suspend fun addMemberPoints(memberNo: String, points: Int) = withContext(Dispatchers.IO) {
+        dao.addMemberPoints(memberNo, points)
+    }
+
+    suspend fun deductMemberPoints(memberNo: String, points: Int) = withContext(Dispatchers.IO) {
+        dao.deductMemberPoints(memberNo, points)
+    }
+
+    suspend fun setMemberPoints(memberNo: String, points: Int) = withContext(Dispatchers.IO) {
+        dao.setMemberPoints(memberNo, points)
+    }
+
     suspend fun saveShiftConfig(shift: ShiftConfigEntity) = withContext(Dispatchers.IO) {
         dao.insertShiftConfig(shift)
     }
@@ -175,12 +187,14 @@ class PosRepository(private val dao: PosDao) {
             }
 
             // Member points reward & deduction
-            if (memberNo.isNotBlank()) {
+            val storeConfig = dao.getStoreConfigOnce() ?: StoreConfigEntity()
+            if (memberNo.isNotBlank() && storeConfig.poinAktif) {
                 if (poinDigunakan > 0) {
                     dao.deductMemberPoints(memberNo, poinDigunakan)
                 }
-                // Earn 1 point per 10.000 spent
-                val earnedPoints = (grandTotal / 10000).toInt()
+                // Earn points based on store config belanjaPerPoin rule
+                val belanjaRule = if (storeConfig.belanjaPerPoin > 0.0) storeConfig.belanjaPerPoin else 10000.0
+                val earnedPoints = (grandTotal / belanjaRule).toInt()
                 if (earnedPoints > 0) {
                     dao.addMemberPoints(memberNo, earnedPoints)
                 }
@@ -278,10 +292,14 @@ class PosRepository(private val dao: PosDao) {
     suspend fun getAllVouchersList(): List<VoucherEntity> = withContext(Dispatchers.IO) { dao.getAllVouchersList() }
     suspend fun getVoucherByCode(code: String): VoucherEntity? = withContext(Dispatchers.IO) { dao.getVoucherByCode(code) }
     suspend fun insertVoucher(voucher: VoucherEntity) = withContext(Dispatchers.IO) { dao.insertVoucher(voucher) }
+    suspend fun insertVouchers(vouchers: List<VoucherEntity>) = withContext(Dispatchers.IO) { dao.insertVouchers(vouchers) }
     suspend fun updateVoucher(voucher: VoucherEntity) = withContext(Dispatchers.IO) { dao.updateVoucher(voucher) }
     suspend fun deleteVoucher(voucher: VoucherEntity) = withContext(Dispatchers.IO) { dao.deleteVoucher(voucher) }
     suspend fun markVoucherAsUsed(code: String, bonNo: String, timestamp: Long = System.currentTimeMillis()) = withContext(Dispatchers.IO) {
         dao.markVoucherAsUsed(code, bonNo, timestamp)
+    }
+    suspend fun markVoucherStatus(code: String, isUsed: Boolean) = withContext(Dispatchers.IO) {
+        dao.markVoucherStatus(code, isUsed)
     }
 
     suspend fun getStoreConfigOnce(): StoreConfigEntity = withContext(Dispatchers.IO) {

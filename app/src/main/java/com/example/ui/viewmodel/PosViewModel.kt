@@ -530,22 +530,22 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     val grandTotal: StateFlow<Double> = combine(
-        subtotal, _appliedPoin, _appliedVoucherDiscount
-    ) { sub, poin, vDisc ->
-        val poinNominal = poin * 100.0 // 1 poin = Rp 100
+        subtotal, _appliedPoin, _appliedVoucherDiscount, storeConfig
+    ) { sub, poin, vDisc, cfg ->
+        val poinNominal = if (cfg.poinAktif) poin * cfg.nilaiPerPoin else 0.0
         val total = sub - poinNominal - vDisc
         if (total < 0.0) 0.0 else total
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     val totalDiscount: StateFlow<Double> = combine(
-        _cartItems, _appliedPoin, _appliedVoucherDiscount
-    ) { items, poin, vDisc ->
+        _cartItems, _appliedPoin, _appliedVoucherDiscount, storeConfig
+    ) { items, poin, vDisc, cfg ->
         val itemsDiscount = items.sumOf { item ->
             val normalSubtotal = item.product.hargaJual * item.qty
             val actualSubtotal = item.subtotal
             if (normalSubtotal > actualSubtotal) normalSubtotal - actualSubtotal else 0.0
         }
-        val poinNominal = poin * 100.0
+        val poinNominal = if (cfg.poinAktif) poin * cfg.nilaiPerPoin else 0.0
         itemsDiscount + poinNominal + vDisc
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
@@ -1162,8 +1162,9 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             // Otomatis terbitkan voucher acak unik untuk tiap struk jika diaktifkan dan memenuhi syarat
             if (config.voucherAutoGenerateOnReceipt && grand >= config.voucherMinBelanjaSyarat) {
                 val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+                val prefix = if (config.voucherPrefix.isNotBlank()) config.voucherPrefix.trim().uppercase() else "VCR"
                 val randomSuffix = (1..6).map { chars.random() }.joinToString("")
-                voucherDiberikan = "VCR-$randomSuffix"
+                voucherDiberikan = "$prefix-$randomSuffix"
                 voucherDiberikanNominal = config.voucherDefaultNominal
 
                 val cal = java.util.Calendar.getInstance()
@@ -1185,6 +1186,8 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 repository.insertVoucher(newVoucher)
             }
 
+            val poinDiscountNominal = if (config.poinAktif) _appliedPoin.value * config.nilaiPerPoin else 0.0
+
             val success = repository.checkoutTransaction(
                 bonNo = bonNo,
                 kasirNik = kasir.nik,
@@ -1199,7 +1202,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 bayarNonTunai = bayarNonTunai,
                 kembalian = kembalian,
                 poinDigunakan = _appliedPoin.value,
-                nilaiPotonganPoin = _appliedPoin.value * 100.0,
+                nilaiPotonganPoin = poinDiscountNominal,
                 kodeVoucher = _appliedVoucherCode.value,
                 nilaiPotonganVoucher = _appliedVoucherDiscount.value,
                 refPembayaran = refPembayaran,
@@ -1224,7 +1227,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                     bayarNonTunai = bayarNonTunai,
                     kembalian = kembalian,
                     poinDigunakan = _appliedPoin.value,
-                    nilaiPotonganPoin = _appliedPoin.value * 100.0,
+                    nilaiPotonganPoin = poinDiscountNominal,
                     kodeVoucher = _appliedVoucherCode.value,
                     nilaiPotonganVoucher = _appliedVoucherDiscount.value,
                     refPembayaran = refPembayaran,
@@ -1295,6 +1298,75 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             )
             repository.insertVoucher(v)
             onDone(v)
+        }
+    }
+
+    fun batchGenerateVouchers(
+        count: Int,
+        nominal: Double,
+        minBelanja: Double,
+        masaBerlakuHari: Int,
+        prefix: String = "VCR",
+        onDone: (Int) -> Unit
+    ) {
+        viewModelScope.launch {
+            val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+            val pfx = if (prefix.isNotBlank()) prefix.trim().uppercase() else "VCR"
+            val cal = java.util.Calendar.getInstance()
+            val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+            val todayStr = sdf.format(cal.time)
+            cal.add(java.util.Calendar.DAY_OF_YEAR, masaBerlakuHari.coerceAtLeast(1))
+            val expStr = sdf.format(cal.time)
+
+            val list = mutableListOf<VoucherEntity>()
+            for (i in 1..count.coerceIn(1, 100)) {
+                val randSuffix = (1..6).map { chars.random() }.joinToString("")
+                val code = "$pfx-$randSuffix"
+                list.add(
+                    VoucherEntity(
+                        kodeVoucher = code,
+                        nominalDiskon = nominal,
+                        minBelanja = minBelanja,
+                        tanggalMulai = todayStr,
+                        tanggalKedaluwarsa = expStr,
+                        isUsed = false,
+                        bonNoAsal = "BATCH",
+                        timestamp = System.currentTimeMillis() + i
+                    )
+                )
+            }
+            repository.insertVouchers(list)
+            onDone(list.size)
+        }
+    }
+
+    fun toggleVoucherUsedStatus(voucher: VoucherEntity, onDone: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            val updated = voucher.copy(
+                isUsed = !voucher.isUsed,
+                usedAtBonNo = if (!voucher.isUsed) "MANUAL-APPLIED" else "",
+                usedAtTimestamp = if (!voucher.isUsed) System.currentTimeMillis() else 0L
+            )
+            repository.updateVoucher(updated)
+            onDone?.invoke()
+        }
+    }
+
+    fun adjustMemberPoints(memberNo: String, deltaPoints: Int, onDone: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            if (deltaPoints >= 0) {
+                repository.addMemberPoints(memberNo, deltaPoints)
+            } else {
+                repository.deductMemberPoints(memberNo, -deltaPoints)
+            }
+            onDone?.invoke()
+        }
+    }
+
+    fun setMemberPoints(memberNo: String, newPoints: Int, onDone: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            repository.setMemberPoints(memberNo, newPoints.coerceAtLeast(0))
+            onDone?.invoke()
         }
     }
 

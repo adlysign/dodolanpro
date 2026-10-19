@@ -29,6 +29,7 @@ fun MemberManagementScreen(
     onNavigateBack: () -> Unit
 ) {
     val members by viewModel.members.collectAsState()
+    val storeConfig by viewModel.storeConfig.collectAsState()
     var memberNo by remember { mutableStateOf("MBR-" + System.currentTimeMillis().toString().takeLast(4)) }
     var nama by remember { mutableStateOf("") }
     var noHp by remember { mutableStateOf("") }
@@ -75,7 +76,8 @@ fun MemberManagementScreen(
                         Button(
                             onClick = {
                                 if (nama.isNotBlank() && memberNo.isNotBlank()) {
-                                    viewModel.saveMember(MemberEntity(memberNo.trim(), nama.trim(), noHp.trim()))
+                                    val bonus = if (storeConfig.poinAktif) storeConfig.poinBonusMemberBaru else 0
+                                    viewModel.saveMember(MemberEntity(memberNo.trim(), nama.trim(), noHp.trim(), poin = bonus))
                                     nama = ""
                                     noHp = ""
                                     memberNo = "MBR-" + System.currentTimeMillis().toString().takeLast(4)

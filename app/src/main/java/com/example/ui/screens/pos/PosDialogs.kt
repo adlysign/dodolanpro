@@ -125,17 +125,18 @@ fun LovProductDialog(
                             }
                         }
                     },
-                    singleLine = true
+                    singleLine = true,
+                    colors = retailTextFieldColors()
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Category Filter Chips (Teks jelas, background terang, teks kontras tinggi, anti-gelap)
+                // Category Filter Chips (Teks jelas, background kontras, anti-putih sebelum dipilih)
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
-                        .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                        .background(Color(0xFFF1F5F9), RoundedCornerShape(8.dp))
+                        .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(8.dp))
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -147,15 +148,15 @@ fun LovProductDialog(
                                 .clickable { selectedCategory = cat }
                                 .testTag("lov_cat_${cat}"),
                             shape = RoundedCornerShape(16.dp),
-                            color = if (isSelected) RetailNavy else Color.White,
+                            color = if (isSelected) RetailNavy else Color(0xFFE2E8F0),
                             border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (isSelected) RetailNavy else Color(0xFFCBD5E1)
+                                1.5.dp,
+                                if (isSelected) RetailNavy else Color(0xFF94A3B8)
                             ),
                             shadowElevation = if (isSelected) 1.dp else 0.dp
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (isSelected) {
@@ -163,6 +164,14 @@ fun LovProductDialog(
                                         Icons.Default.Check,
                                         contentDescription = null,
                                         tint = Color.White,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                } else {
+                                    Icon(
+                                        Icons.Default.Sell,
+                                        contentDescription = null,
+                                        tint = Color(0xFF475569),
                                         modifier = Modifier.size(12.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -170,8 +179,8 @@ fun LovProductDialog(
                                 Text(
                                     text = cat,
                                     fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) Color.White else Color(0xFF1E293B)
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) Color.White else Color(0xFF0F172A)
                                 )
                             }
                         }
@@ -599,39 +608,51 @@ fun PaymentDialog(
                 if (currentMember != null) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = RetailGreenLight)
+                        colors = CardDefaults.cardColors(containerColor = if (storeConfig.poinAktif) RetailGreenLight else Color(0xFFF1F5F9))
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text("Member: ${currentMember.nama} (${currentMember.poin} Poin)", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = RetailGreen)
-                                Text("Tukar poin potongan harga (1 Poin = ${formatRupiah(storeConfig.nilaiPerPoin)})", fontSize = 10.sp, color = Color.Black)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Member: ${currentMember.nama} (${currentMember.poin} Poin)", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = if (storeConfig.poinAktif) RetailGreen else Color.Gray)
+                                if (!storeConfig.poinAktif) {
+                                    Text("Program poin loyalty sedang dinonaktifkan di pengaturan", fontSize = 10.sp, color = Color.Gray)
+                                } else {
+                                    val minNote = if (storeConfig.minPoinRedeem > 0) " (Min. ${storeConfig.minPoinRedeem} Poin)" else ""
+                                    Text("Tukar poin potongan harga (1 Poin = ${formatRupiah(storeConfig.nilaiPerPoin)})$minNote", fontSize = 10.sp, color = Color.Black)
+                                }
                             }
 
-                            if (appliedPoin > 0) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("-${formatRupiah(appliedPoin * storeConfig.nilaiPerPoin)}", fontWeight = FontWeight.Bold, color = Color.Black, fontSize = 12.sp)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    TextButton(onClick = { onApplyMemberPoints(0) }) {
-                                        Text("Batal", fontSize = 10.sp)
+                            if (storeConfig.poinAktif) {
+                                if (appliedPoin > 0) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("-${formatRupiah(appliedPoin * storeConfig.nilaiPerPoin)}", fontWeight = FontWeight.Bold, color = Color.Black, fontSize = 12.sp)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        TextButton(onClick = { onApplyMemberPoints(0) }) {
+                                            Text("Batal", fontSize = 10.sp)
+                                        }
                                     }
-                                }
-                            } else {
-                                Button(
-                                    onClick = {
-                                        val maxPointsByTotal = (grandTotal / storeConfig.nilaiPerPoin).toInt()
-                                        val usable = currentMember.poin.coerceAtMost(maxPointsByTotal)
-                                        onApplyMemberPoints(usable)
-                                    },
-                                    enabled = currentMember.poin > 0,
-                                    colors = ButtonDefaults.buttonColors(containerColor = RetailGreen),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                    modifier = Modifier.height(30.dp)
-                                ) {
-                                    Text("Gunakan Poin", fontSize = 11.sp)
+                                } else {
+                                    val minPoin = storeConfig.minPoinRedeem.coerceAtLeast(0)
+                                    val canRedeem = currentMember.poin >= minPoin && currentMember.poin > 0
+                                    Button(
+                                        onClick = {
+                                            val maxPointsByTotal = if (storeConfig.nilaiPerPoin > 0) (grandTotal / storeConfig.nilaiPerPoin).toInt() else 0
+                                            var usable = currentMember.poin.coerceAtMost(maxPointsByTotal)
+                                            if (storeConfig.maxPoinRedeemPerTransaksi > 0) {
+                                                usable = usable.coerceAtMost(storeConfig.maxPoinRedeemPerTransaksi)
+                                            }
+                                            onApplyMemberPoints(usable)
+                                        },
+                                        enabled = canRedeem,
+                                        colors = ButtonDefaults.buttonColors(containerColor = RetailGreen),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(30.dp)
+                                    ) {
+                                        Text("Gunakan Poin", fontSize = 11.sp)
+                                    }
                                 }
                             }
                         }
@@ -671,7 +692,8 @@ fun PaymentDialog(
                                     onValueChange = { cashInput = it },
                                     modifier = Modifier.fillMaxWidth().testTag("cash_input_field"),
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    textStyle = LocalTextStyle.current.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                                    textStyle = LocalTextStyle.current.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A)),
+                                    colors = retailTextFieldColors()
                                 )
 
                                 Spacer(modifier = Modifier.height(6.dp))
@@ -756,7 +778,8 @@ fun PaymentDialog(
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    singleLine = true
+                                    singleLine = true,
+                                    colors = retailTextFieldColors()
                                 )
 
                                 Spacer(modifier = Modifier.height(6.dp))
@@ -767,7 +790,8 @@ fun PaymentDialog(
                                     onValueChange = { nonCashInput = it },
                                     modifier = Modifier.fillMaxWidth(),
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    singleLine = true
+                                    singleLine = true,
+                                    colors = retailTextFieldColors()
                                 )
 
                                 Spacer(modifier = Modifier.height(6.dp))
@@ -804,7 +828,8 @@ fun PaymentDialog(
                                     modifier = Modifier.fillMaxWidth(),
                                     label = { Text("No. HP / Kode QRIS") },
                                     placeholder = { Text("08xxxxxxxxxx") },
-                                    singleLine = true
+                                    singleLine = true,
+                                    colors = retailTextFieldColors()
                                 )
                             }
                         }
@@ -823,7 +848,8 @@ fun PaymentDialog(
                                     onValueChange = { cardApprovalCode = it },
                                     modifier = Modifier.fillMaxWidth(),
                                     label = { Text("No. Kartu / Trace / Approval Code") },
-                                    singleLine = true
+                                    singleLine = true,
+                                    colors = retailTextFieldColors()
                                 )
                             }
                         }
@@ -923,7 +949,7 @@ fun PaymentDialog(
     }
 }
 
-// --- 5. Thermal Receipt Dialog with Document Storage in DodolanPro/Penjualan ---
+// --- 5. Thermal Receipt Dialog with Customizable Receipt Models & Direct Bluetooth Printing ---
 @Composable
 fun ReceiptDialog(
     transaction: TransactionEntity,
@@ -932,99 +958,19 @@ fun ReceiptDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var saveStatusMsg by remember { mutableStateOf("") }
+    var isPrinting by remember { mutableStateOf(false) }
 
     val receiptText = remember(transaction, items, storeConfig) {
-        buildString {
-            appendLine("       ${storeConfig.storeName}       ")
-            if (storeConfig.receiptShowAlamat && storeConfig.alamat.isNotBlank()) {
-                appendLine("       ${storeConfig.alamat}       ")
-            }
-            if (storeConfig.receiptShowTelp && storeConfig.telp.isNotBlank()) {
-                appendLine("        TELP: ${storeConfig.telp}        ")
-            }
-            if (storeConfig.receiptShowNpwp && storeConfig.npwp.isNotBlank()) {
-                appendLine("     NPWP: ${storeConfig.npwp}     ")
-            }
-            appendLine("----------------------------------------")
-            if (storeConfig.receiptShowBonNo && storeConfig.receiptShowKasir) {
-                appendLine("BON   : ${transaction.bonNo} KASIR: ${transaction.kasirNama}")
-            } else if (storeConfig.receiptShowBonNo) {
-                appendLine("BON   : ${transaction.bonNo}")
-            } else if (storeConfig.receiptShowKasir) {
-                appendLine("KASIR : ${transaction.kasirNama}")
-            }
-            if (transaction.memberNo.isNotEmpty()) {
-                appendLine("MEMBER: ${transaction.memberNo}")
-            }
-            appendLine("----------------------------------------")
-            items.forEach { item ->
-                val pluPrefix = if (storeConfig.receiptShowPlu) "[${item.product.plu}] " else ""
-                val name = (pluPrefix + item.product.nama).take(22).padEnd(22)
-                val qtyStr = (if (item.isRetur) "-${item.qty}" else "${item.qty}").padStart(3)
-                val priceStr = formatRupiah(item.product.hargaJual).padStart(11)
-                appendLine("$name $qtyStr $priceStr")
-                if (storeConfig.receiptShowDiskon && item.product.isPromo && item.product.diskonPersen > 0) {
-                    appendLine("  * Diskon ${item.product.diskonPersen}%")
-                }
-                if (item.isVoid) {
-                    appendLine("  ** ITEM VOID (${item.voidReason}) **")
-                } else if (item.isRetur) {
-                    appendLine("  ** ITEM RETUR KONSUMEN **")
-                }
-            }
-            appendLine("----------------------------------------")
-            appendLine("Total Item : ${items.filter { !it.isVoid }.sumOf { if (it.isRetur) -it.qty else it.qty }}")
-            appendLine("Subtotal   : ${formatRupiah(transaction.subtotal)}")
-            if (transaction.nilaiPotonganPoin > 0) {
-                appendLine("Poin Member: -${formatRupiah(transaction.nilaiPotonganPoin)} (${transaction.poinDigunakan} pt)")
-            }
-            if (transaction.nilaiPotonganVoucher > 0) {
-                appendLine("Voucher    : -${formatRupiah(transaction.nilaiPotonganVoucher)} (${transaction.kodeVoucher})")
-            }
-            appendLine("TOTAL      : ${formatRupiah(transaction.grandTotal)}")
-            appendLine("Cara Bayar : ${transaction.caraBayar}")
-            if (transaction.caraBayar == "CAMPURAN") {
-                appendLine("Bayar Tunai: ${formatRupiah(transaction.bayarTunai)}")
-                appendLine("Non-Tunai  : ${formatRupiah(transaction.bayarNonTunai)}")
-                appendLine("Kembalian  : ${formatRupiah(transaction.kembalian)}")
-            } else if (transaction.caraBayar == "TUNAI") {
-                appendLine("Tunai      : ${formatRupiah(transaction.bayarTunai)}")
-                appendLine("Kembalian  : ${formatRupiah(transaction.kembalian)}")
-            } else {
-                appendLine("Ref        : ${transaction.refPembayaran}")
-            }
-            val ppn = (transaction.grandTotal * 0.11 / 1.11)
-            appendLine("PPN 11%    : ${formatRupiah(ppn)}")
-            if (storeConfig.receiptShowHemat && transaction.diskonTotal > 0) {
-                appendLine("----------------------------------------")
-                appendLine("ANDA HEMAT : ${formatRupiah(transaction.diskonTotal)}")
-            }
-            if (transaction.voucherDiberikan.isNotBlank()) {
-                appendLine("----------------------------------------")
-                appendLine("      KODE VOUCHER BELANJA ANDA")
-                appendLine("KODE VOUCHER: ${transaction.voucherDiberikan}")
-                appendLine("POTONGAN    : ${formatRupiah(transaction.voucherDiberikanNominal)}")
-                if (storeConfig.voucherMinBelanjaPakai > 0) {
-                    appendLine("MIN. BELANJA: ${formatRupiah(storeConfig.voucherMinBelanjaPakai)}")
-                }
-                appendLine("BERLAKU S/D : ${transaction.voucherDiberikanExpiry}")
-                appendLine("*Gunakan kode ini pd belanja berikutnya")
-                appendLine("*Hanya berlaku 1x & s/d tanggal kedaluwarsa")
-            } else if (storeConfig.receiptShowVoucher && storeConfig.activeVoucherCode.isNotEmpty()) {
-                appendLine("----------------------------------------")
-                appendLine("KODE VOUCHER ANDA: ${storeConfig.activeVoucherCode}")
-                appendLine("Gunakan utk potongan Rp ${storeConfig.voucherDiscountAmount.toLong()}")
-            }
-            appendLine("----------------------------------------")
-            if (storeConfig.receiptShowDateTime) {
-                appendLine("Tgl. ${transaction.tanggal}  ${transaction.waktu}")
-            }
-            appendLine("========================================")
-            appendLine("   ${storeConfig.footerMsg}   ")
-            if (storeConfig.receiptPolicyMsg.isNotBlank()) {
-                appendLine("   ${storeConfig.receiptPolicyMsg}   ")
-            }
+        com.example.util.ReceiptFormatter.formatReceipt(transaction, items, storeConfig)
+    }
+
+    // Auto-print on dialog open if enabled
+    LaunchedEffect(Unit) {
+        if (storeConfig.autoPrintReceipt && storeConfig.printerType == "BLUETOOTH" && storeConfig.bluetoothPrinterMac.isNotBlank()) {
+            val escPos = com.example.util.ReceiptFormatter.generateEscPos(receiptText, storeConfig)
+            com.example.util.BluetoothPrinterHelper.printOverBluetooth(storeConfig.bluetoothPrinterMac, escPos)
         }
     }
 
@@ -1035,7 +981,7 @@ fun ReceiptDialog(
         Card(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.85f)
+                .fillMaxHeight(0.88f)
                 .imePadding(),
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White)
@@ -1049,7 +995,10 @@ fun ReceiptDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Receipt, contentDescription = null, tint = RetailRedPrimary)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("STRUK TRANSAKSI KASIR", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Column {
+                            Text("STRUK TRANSAKSI KASIR", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Model: ${storeConfig.receiptModel} (${storeConfig.printerPaperSize})", fontSize = 10.sp, color = Color.Gray)
+                        }
                     }
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Default.Close, contentDescription = "Tutup")
@@ -1070,8 +1019,8 @@ fun ReceiptDialog(
                             Text(
                                 text = receiptText,
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                lineHeight = 16.sp,
+                                fontSize = if (storeConfig.printerPaperSize == "80mm") 10.sp else 11.sp,
+                                lineHeight = 15.sp,
                                 color = Color.Black
                             )
                         }
@@ -1085,8 +1034,32 @@ fun ReceiptDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Action buttons: Simpan Dokumen ke DodolanPro/Penjualan, Bagikan, Selesai
+                // Action buttons: Cetak, Simpan, Bagikan, Selesai
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                isPrinting = true
+                                if (storeConfig.printerType == "BLUETOOTH" && storeConfig.bluetoothPrinterMac.isNotBlank()) {
+                                    val escPos = com.example.util.ReceiptFormatter.generateEscPos(receiptText, storeConfig)
+                                    val res = com.example.util.BluetoothPrinterHelper.printOverBluetooth(storeConfig.bluetoothPrinterMac, escPos)
+                                    saveStatusMsg = if (res.first) "✓ Selesai mencetak ke printer" else res.second
+                                } else {
+                                    val res = com.example.util.BluetoothPrinterHelper.shareReceiptText(context, receiptText, "Struk ${transaction.bonNo}")
+                                    saveStatusMsg = res.second
+                                }
+                                isPrinting = false
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32), contentColor = Color.White),
+                        enabled = !isPrinting
+                    ) {
+                        Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("CETAK", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+
                     OutlinedButton(
                         onClick = {
                             val saved = DocExportManager.saveDocument(
@@ -1102,7 +1075,7 @@ fun ReceiptDialog(
                     ) {
                         Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("SIMPAN FILE", fontSize = 10.sp)
+                        Text("SIMPAN", fontSize = 10.sp)
                     }
 
                     OutlinedButton(

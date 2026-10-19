@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
         PurchaseOrderEntity::class,
         VoucherEntity::class
     ],
-    version = 5,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -41,6 +41,42 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        private val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE store_config ADD COLUMN belanjaPerPoin REAL NOT NULL DEFAULT 10000.0")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN poinAktif INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN minPoinRedeem INTEGER NOT NULL DEFAULT 10")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN maxPoinRedeemPerTransaksi INTEGER NOT NULL DEFAULT 500")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN poinBonusMemberBaru INTEGER NOT NULL DEFAULT 20")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN voucherPrefix TEXT NOT NULL DEFAULT 'VCR'")
+            }
+        }
+
+        private val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE store_config ADD COLUMN receiptModel TEXT NOT NULL DEFAULT 'STANDARD_RETAIL'")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN receiptCustomGreeting TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN receiptShowStoreName INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN receiptShowCustomerName INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN receiptShowMemberInfo INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN receiptShowEarnedPoints INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN receiptShowTotalItemQty INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN receiptShowPpn INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN receiptShowPaymentDetail INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN receiptWifiInfo TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN receiptShowBarcodeSimulation INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN receiptItemNameWrap INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN bluetoothPrinterName TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN printerIpAddress TEXT NOT NULL DEFAULT '192.168.1.100'")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN printerPort INTEGER NOT NULL DEFAULT 9100")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN printerFeedLines INTEGER NOT NULL DEFAULT 3")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN printerAutoCut INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN printerOpenCashDrawer INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN printerPrintCopies INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN printerFontSize TEXT NOT NULL DEFAULT 'NORMAL'")
+            }
+        }
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val appContext = context.applicationContext
@@ -49,6 +85,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "dodolan_pro_db"
                 )
+                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7)
                     .fallbackToDestructiveMigration()
                     .addCallback(DatabaseCallback(appContext, scope))
                     .build()
