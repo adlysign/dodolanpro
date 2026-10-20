@@ -21,6 +21,8 @@ import com.example.ui.viewmodel.PosShortcutEvent
 import com.example.ui.viewmodel.PosViewModel
 import com.example.util.DocExportManager
 
+import com.example.ui.screens.splash.SplashScreen
+
 class MainActivity : ComponentActivity() {
     private val viewModel: PosViewModel by viewModels()
 
@@ -99,20 +101,25 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DodolanProTheme {
-                val currentDest by viewModel.currentDestination.collectAsState()
+                var showSplash by remember { mutableStateOf(true) }
 
-                BackHandler(enabled = currentDest != PosNavDestination.KASIR) {
-                    if (currentDest == PosNavDestination.SIS_DASHBOARD) {
-                        viewModel.navigateTo(PosNavDestination.KASIR)
-                    } else {
-                        viewModel.navigateTo(PosNavDestination.SIS_DASHBOARD)
+                if (showSplash) {
+                    SplashScreen(onSplashFinished = { showSplash = false })
+                } else {
+                    val currentDest by viewModel.currentDestination.collectAsState()
+
+                    BackHandler(enabled = currentDest != PosNavDestination.KASIR) {
+                        if (currentDest == PosNavDestination.SIS_DASHBOARD) {
+                            viewModel.navigateTo(PosNavDestination.KASIR)
+                        } else {
+                            viewModel.navigateTo(PosNavDestination.SIS_DASHBOARD)
+                        }
                     }
-                }
 
-                Surface(
-                    modifier = Modifier.fillMaxSize().imePadding(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize().imePadding(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
                     when (currentDest) {
                         PosNavDestination.KASIR -> PosScreen(
                             viewModel = viewModel,
@@ -195,6 +202,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
     }
 
     override fun onStop() {

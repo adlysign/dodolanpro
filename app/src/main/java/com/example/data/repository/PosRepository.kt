@@ -262,7 +262,7 @@ class PosRepository(private val dao: PosDao) {
         dao.insertPurchase(purchase)
         dao.insertPurchaseItems(items)
         for (item in items) {
-            val existing = dao.getProductByPluOrBarcode(item.plu)
+            val existing = dao.getProductByPluOrBarcode(item.plu) ?: dao.getProductByPluOrBarcode(item.barcode)
             if (existing != null) {
                 val currentStock = maxOf(0, existing.stok)
                 val currentCost = existing.hargaBeli
@@ -279,11 +279,13 @@ class PosRepository(private val dao: PosDao) {
                     buyCostPerBase
                 }
 
+                val newStock = currentStock + buyQty
                 val updatedProduct = existing.copy(
-                    stok = existing.stok + buyQty,
+                    stok = newStock,
                     hargaBeli = newHpp
                 )
-                dao.updateProduct(updatedProduct)
+                dao.insertProduct(updatedProduct)
+                dao.setStock(existing.plu, newStock)
             } else {
                 val konversi = maxOf(1, item.konversi)
                 dao.addStock(item.plu, item.qty * konversi)

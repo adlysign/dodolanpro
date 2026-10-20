@@ -621,28 +621,30 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addProductToCart(product: ProductEntity, qty: Int = 1, selectedSatuan: String = product.satuan) {
+        val freshProduct = allProducts.value.find { it.plu == product.plu } ?: product
         val currentList = _cartItems.value.toMutableList()
-        val index = currentList.indexOfFirst { it.product.plu == product.plu && it.selectedSatuan == selectedSatuan && !it.isVoid && !it.isRetur }
+        val index = currentList.indexOfFirst { it.product.plu == freshProduct.plu && it.selectedSatuan == selectedSatuan && !it.isVoid && !it.isRetur }
         val newTotalQty: Int
 
         if (index >= 0) {
             val existing = currentList[index]
             val updatedQty = existing.qty + qty
-            val isGrosir = product.hargaGrosir > 0 && product.hargaGrosirQty > 0 && updatedQty >= product.hargaGrosirQty
+            val isGrosir = freshProduct.hargaGrosir > 0 && freshProduct.hargaGrosirQty > 0 && updatedQty >= freshProduct.hargaGrosirQty
             currentList[index] = existing.copy(
+                product = freshProduct,
                 qty = updatedQty,
                 isGrosirApplied = isGrosir,
-                isPromoApplied = product.isPromo || product.diskonPersen > 0
+                isPromoApplied = freshProduct.isPromo || freshProduct.diskonPersen > 0
             )
             newTotalQty = updatedQty
         } else {
-            val isGrosir = product.hargaGrosir > 0 && product.hargaGrosirQty > 0 && qty >= product.hargaGrosirQty
+            val isGrosir = freshProduct.hargaGrosir > 0 && freshProduct.hargaGrosirQty > 0 && qty >= freshProduct.hargaGrosirQty
             currentList.add(
                 CartItem(
-                    product = product,
+                    product = freshProduct,
                     qty = qty,
                     isGrosirApplied = isGrosir,
-                    isPromoApplied = product.isPromo || product.diskonPersen > 0,
+                    isPromoApplied = freshProduct.isPromo || freshProduct.diskonPersen > 0,
                     selectedSatuan = selectedSatuan
                 )
             )
@@ -651,8 +653,8 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         _cartItems.value = currentList
 
         // Check for Promo Alerts
-        if (product.isPromo) {
-            when (product.promoType) {
+        if (freshProduct.isPromo) {
+            when (freshProduct.promoType) {
                 "BELI_X_GRATIS_Y" -> {
                     if (newTotalQty >= product.promoMinBeli) {
                         val freeUnits = (newTotalQty / product.promoMinBeli) * maxOf(1, product.promoGratisQty)

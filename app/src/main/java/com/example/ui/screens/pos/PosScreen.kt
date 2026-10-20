@@ -1699,6 +1699,20 @@ fun ItemTableRow(
                         )
                     }
                 }
+                Spacer(modifier = Modifier.width(4.dp))
+                Surface(
+                    color = if (item.product.stok <= 0) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
+                    shape = RoundedCornerShape(3.dp),
+                    border = BorderStroke(0.5.dp, if (item.product.stok <= 0) Color(0xFFFFCDD2) else Color(0xFFC8E6C9))
+                ) {
+                    Text(
+                        "Stok: ${item.product.stok}",
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (item.product.stok <= 0) RetailRedPrimary else RetailGreen,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
+                }
                 if (item.isVoid) {
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("VOID", color = RetailRedPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
