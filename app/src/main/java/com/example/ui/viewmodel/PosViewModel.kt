@@ -316,6 +316,14 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     val allVouchers: StateFlow<List<VoucherEntity>> = repository.getAllVouchers()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val allSuppliers: StateFlow<List<SupplierEntity>> = repository.getAllSuppliers()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allStoreBranches: StateFlow<List<StoreBranchEntity>> = repository.getAllStoreBranches()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allTokoGrosir: StateFlow<List<StoreBranchEntity>> get() = allStoreBranches
+
     val products: StateFlow<List<ProductEntity>> get() = allProducts
     val transactions: StateFlow<List<TransactionEntity>> get() = allTransactions
     val cashiers: StateFlow<List<CashierUserEntity>> get() = allCashiers
@@ -1066,6 +1074,115 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             status = status
         )
         submitReturnDoc(doc) { onDone() }
+    }
+
+    fun recordReturnPurchase(
+        nrbNo: String,
+        sumberTipe: String,
+        sumberNama: String,
+        fakturAsal: String,
+        petugasNama: String,
+        alasanUtama: String,
+        items: List<Pair<ProductEntity, Pair<Int, Double>>>,
+        itemReasons: Map<String, String> = emptyMap(),
+        itemUnits: Map<String, Pair<String, Int>> = emptyMap(),
+        isFixed: Boolean,
+        onDone: (Boolean) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            try {
+                val jsonArr = org.json.JSONArray()
+                var totalNilai = 0.0
+                var totalQty = 0
+                val itemsForStock = mutableListOf<Pair<String, Int>>()
+
+                for ((prod, qtyAndPrice) in items) {
+                    val (qty, price) = qtyAndPrice
+                    val subtotal = price * qty
+                    totalNilai += subtotal
+                    totalQty += qty
+                    val unitInfo = itemUnits[prod.plu] ?: Pair(prod.satuan, 1)
+                    val konversi = maxOf(1, unitInfo.second)
+                    itemsForStock.add(prod.plu to (qty * konversi))
+
+                    val reason = itemReasons[prod.plu] ?: alasanUtama
+                    val obj = org.json.JSONObject().apply {
+                        put("plu", prod.plu)
+                        put("barcode", prod.barcode)
+                        put("nama", prod.nama)
+                        put("satuan", unitInfo.first)
+                        put("konversi", konversi)
+                        put("qty", qty)
+                        put("hargaBeli", price)
+                        put("subtotal", subtotal)
+                        put("alasan", reason)
+                    }
+                    jsonArr.put(obj)
+                }
+
+                val doc = ReturnDocEntity(
+                    nrbNo = nrbNo,
+                    tipeRetur = if (sumberTipe == "TOKO_GROSIR") "TOKO_GROSIR" else "SUPPLIER",
+                    refNo = fakturAsal,
+                    fakturAsal = fakturAsal,
+                    supplierNama = sumberNama,
+                    jenisRetur = if (sumberTipe == "TOKO_GROSIR") "RETUR TOKO GROSIR" else "RETUR SUPPLIER",
+                    tanggal = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault()).format(Date()),
+                    totalNilai = totalNilai,
+                    alasan = alasanUtama,
+                    keteranganRetur = alasanUtama,
+                    status = if (isFixed) "FIXED" else "FORM",
+                    timestamp = System.currentTimeMillis(),
+                    petugasNama = petugasNama.ifBlank { _currentCashier.value?.nama ?: "Administrator" },
+                    tokoTujuan = if (sumberTipe == "TOKO_GROSIR") "Toko Grosir" else "Supplier",
+                    totalQty = totalQty,
+                    itemsJson = jsonArr.toString()
+                )
+
+                repository.recordReturnPurchase(doc, itemsForStock, isFixed)
+                onDone(true)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onDone(false)
+            }
+        }
+    }
+
+    fun finalizeReturnDoc(doc: ReturnDocEntity, onDone: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val itemsToDeduct = mutableListOf<Pair<String, Int>>()
+                if (doc.itemsJson.isNotBlank()) {
+                    try {
+                        val arr = org.json.JSONArray(doc.itemsJson)
+                        for (i in 0 until arr.length()) {
+                            val obj = arr.getJSONObject(i)
+                            val plu = obj.optString("plu")
+                            val qty = obj.optInt("qty", 0)
+                            val konversi = maxOf(1, obj.optInt("konversi", 1))
+                            val totalDeduct = qty * konversi
+                            if (plu.isNotBlank() && totalDeduct > 0) {
+                                itemsToDeduct.add(plu to totalDeduct)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                repository.finalizeReturnDoc(doc.nrbNo, itemsToDeduct)
+                onDone(true)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onDone(false)
+            }
+        }
+    }
+
+    fun deleteReturnDoc(nrbNo: String, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.deleteReturnDoc(nrbNo)
+            onDone()
+        }
     }
 
     fun processCheckout(
@@ -1827,9 +1944,109 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun addSupplier(
+        nama: String,
+        noHp: String = "",
+        alamat: String = "",
+        kontakPerson: String = "",
+        keterangan: String = "",
+        onDone: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val kode = "SUP-" + System.currentTimeMillis().toString().takeLast(4)
+            val s = SupplierEntity(
+                kode = kode,
+                nama = nama.trim(),
+                noHp = noHp.trim(),
+                alamat = alamat.trim(),
+                kontakPerson = kontakPerson.trim(),
+                keterangan = keterangan.trim()
+            )
+            repository.insertSupplier(s)
+            onDone()
+        }
+    }
+
+    fun addStoreBranch(
+        namaToko: String,
+        alamat: String = "",
+        telepon: String = "",
+        keterangan: String = "",
+        onDone: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val kode = "CAB-" + System.currentTimeMillis().toString().takeLast(4)
+            val b = StoreBranchEntity(
+                kodeToko = kode,
+                namaToko = namaToko.trim(),
+                alamat = alamat.trim(),
+                telepon = telepon.trim(),
+                keterangan = keterangan.trim()
+            )
+            repository.insertStoreBranch(b)
+            onDone()
+        }
+    }
+
     fun recordDirectPurchase(purchase: PurchaseEntity, items: List<PurchaseItemEntity>, onDone: () -> Unit = {}) {
         viewModelScope.launch {
             repository.recordPurchase(purchase, items)
+            onDone()
+        }
+    }
+
+    fun recordDirectPurchase(
+        faktur: String,
+        supplier: String,
+        tokoTujuan: String,
+        petugasNama: String,
+        keterangan: String,
+        items: List<Pair<ProductEntity, Pair<Int, Double>>>,
+        itemUnits: Map<String, Pair<String, Int>> = emptyMap(),
+        costMethod: String = "AVERAGE",
+        onDone: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val purchaseItems = items.map { (prod, qtyAndPrice) ->
+                val (qty, price) = qtyAndPrice
+                val unitInfo = itemUnits[prod.plu] ?: Pair(prod.satuan, 1)
+                PurchaseItemEntity(
+                    noFakturBeli = faktur,
+                    plu = prod.plu,
+                    barcode = prod.barcode,
+                    nama = prod.nama,
+                    hargaBeli = price,
+                    qty = qty,
+                    subtotal = price * qty,
+                    satuan = unitInfo.first,
+                    konversi = maxOf(1, unitInfo.second)
+                )
+            }
+            val totalNominal = purchaseItems.sumOf { it.subtotal }
+            val totalItem = purchaseItems.sumOf { it.qty }
+            val purchase = PurchaseEntity(
+                noFakturBeli = faktur,
+                supplierNama = supplier,
+                tanggal = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault()).format(Date()),
+                totalBeli = totalNominal,
+                keterangan = keterangan,
+                totalItem = totalItem,
+                totalNominal = totalNominal,
+                kasirNik = _currentCashier.value?.nik ?: "ADMIN",
+                petugasNama = petugasNama.ifBlank { _currentCashier.value?.nama ?: "Administrator" },
+                tokoTujuan = tokoTujuan.ifBlank { "Toko Utama" }
+            )
+            repository.recordPurchase(purchase, purchaseItems, updateCostMethod = costMethod)
+            onDone()
+        }
+    }
+
+    fun updateProductUnit(plu: String, newSatuan: String, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            val prod = allProducts.value.find { it.plu == plu }
+            if (prod != null && newSatuan.isNotBlank()) {
+                repository.updateProduct(prod.copy(satuan = newSatuan.trim().uppercase()))
+            }
             onDone()
         }
     }
@@ -1841,34 +2058,16 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         items: List<Pair<ProductEntity, Pair<Int, Double>>>,
         onDone: () -> Unit = {}
     ) {
-        viewModelScope.launch {
-            val purchaseItems = items.map { (prod, qtyAndPrice) ->
-                val (qty, price) = qtyAndPrice
-                PurchaseItemEntity(
-                    noFakturBeli = faktur,
-                    plu = prod.plu,
-                    barcode = prod.barcode,
-                    nama = prod.nama,
-                    hargaBeli = price,
-                    qty = qty,
-                    subtotal = price * qty
-                )
-            }
-            val totalNominal = purchaseItems.sumOf { it.subtotal }
-            val totalItem = purchaseItems.sumOf { it.qty }
-            val purchase = PurchaseEntity(
-                noFakturBeli = faktur,
-                supplierNama = supplier,
-                tanggal = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date()),
-                totalBeli = totalNominal,
-                keterangan = keterangan,
-                totalItem = totalItem,
-                totalNominal = totalNominal,
-                kasirNik = _currentCashier.value?.nik ?: "ADMIN"
-            )
-            repository.recordPurchase(purchase, purchaseItems)
-            onDone()
-        }
+        recordDirectPurchase(
+            faktur = faktur,
+            supplier = supplier,
+            tokoTujuan = "Toko Utama",
+            petugasNama = _currentCashier.value?.nama ?: "Administrator",
+            keterangan = keterangan,
+            items = items,
+            costMethod = "AVERAGE",
+            onDone = onDone
+        )
     }
 
     fun seedRealisticTransactions(onDone: () -> Unit = {}) {

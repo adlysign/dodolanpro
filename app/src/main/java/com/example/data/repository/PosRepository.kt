@@ -256,14 +256,54 @@ class PosRepository(private val dao: PosDao) {
 
     suspend fun recordPurchase(
         purchase: PurchaseEntity,
-        items: List<PurchaseItemEntity>
+        items: List<PurchaseItemEntity>,
+        updateCostMethod: String = "AVERAGE"
     ) = withContext(Dispatchers.IO) {
         dao.insertPurchase(purchase)
         dao.insertPurchaseItems(items)
         for (item in items) {
-            dao.addStock(item.plu, item.qty)
+            val existing = dao.getProductByPluOrBarcode(item.plu)
+            if (existing != null) {
+                val currentStock = maxOf(0, existing.stok)
+                val currentCost = existing.hargaBeli
+                val konversi = maxOf(1, item.konversi)
+                val buyQty = item.qty * konversi
+                val buyCostPerBase = if (konversi > 1) item.hargaBeli / konversi else item.hargaBeli
+
+                // Moving Weighted Average Cost (Harga Pokok Rata-Rata Bergerak)
+                // Jika metode AVERAGE dan total stok > 0:
+                // HPP baru = ((Stok Lama * HPP Lama) + (Qty Beli * Harga Beli Baru per Satuan Dasar)) / (Stok Lama + Qty Beli)
+                val newHpp = if (updateCostMethod == "AVERAGE" && (currentStock + buyQty) > 0) {
+                    ((currentStock * currentCost) + (buyQty * buyCostPerBase)) / (currentStock + buyQty)
+                } else {
+                    buyCostPerBase
+                }
+
+                val updatedProduct = existing.copy(
+                    stok = existing.stok + buyQty,
+                    hargaBeli = newHpp
+                )
+                dao.updateProduct(updatedProduct)
+            } else {
+                val konversi = maxOf(1, item.konversi)
+                dao.addStock(item.plu, item.qty * konversi)
+            }
         }
     }
+
+    // Suppliers
+    fun getAllSuppliers(): Flow<List<SupplierEntity>> = dao.getAllSuppliers()
+    suspend fun getAllSuppliersList(): List<SupplierEntity> = withContext(Dispatchers.IO) { dao.getAllSuppliersList() }
+    suspend fun insertSupplier(supplier: SupplierEntity) = withContext(Dispatchers.IO) { dao.insertSupplier(supplier) }
+    suspend fun updateSupplier(supplier: SupplierEntity) = withContext(Dispatchers.IO) { dao.updateSupplier(supplier) }
+    suspend fun deleteSupplier(supplier: SupplierEntity) = withContext(Dispatchers.IO) { dao.deleteSupplier(supplier) }
+
+    // Store Branches
+    fun getAllStoreBranches(): Flow<List<StoreBranchEntity>> = dao.getAllStoreBranches()
+    suspend fun getAllStoreBranchesList(): List<StoreBranchEntity> = withContext(Dispatchers.IO) { dao.getAllStoreBranchesList() }
+    suspend fun insertStoreBranch(branch: StoreBranchEntity) = withContext(Dispatchers.IO) { dao.insertStoreBranch(branch) }
+    suspend fun updateStoreBranch(branch: StoreBranchEntity) = withContext(Dispatchers.IO) { dao.updateStoreBranch(branch) }
+    suspend fun deleteStoreBranch(branch: StoreBranchEntity) = withContext(Dispatchers.IO) { dao.deleteStoreBranch(branch) }
 
     suspend fun getPurchaseItems(faktur: String): List<PurchaseItemEntity> = withContext(Dispatchers.IO) {
         dao.getItemsForPurchase(faktur)
@@ -281,6 +321,37 @@ class PosRepository(private val dao: PosDao) {
 
     suspend fun insertReturnDoc(retur: ReturnDocEntity) = withContext(Dispatchers.IO) {
         dao.insertReturnDoc(retur)
+    }
+
+    suspend fun recordReturnPurchase(
+        doc: ReturnDocEntity,
+        itemsToDeduct: List<Pair<String, Int>>,
+        isFixed: Boolean
+    ) = withContext(Dispatchers.IO) {
+        val finalDoc = doc.copy(status = if (isFixed) "FIXED" else "FORM")
+        dao.insertReturnDoc(finalDoc)
+        if (isFixed) {
+            for ((plu, qty) in itemsToDeduct) {
+                dao.addStock(plu, -qty)
+            }
+        }
+    }
+
+    suspend fun finalizeReturnDoc(
+        nrbNo: String,
+        itemsToDeduct: List<Pair<String, Int>>
+    ) = withContext(Dispatchers.IO) {
+        val existing = dao.getReturnDoc(nrbNo)
+        if (existing != null) {
+            dao.updateReturnDoc(existing.copy(status = "FIXED"))
+            for ((plu, qty) in itemsToDeduct) {
+                dao.addStock(plu, -qty)
+            }
+        }
+    }
+
+    suspend fun deleteReturnDoc(nrbNo: String) = withContext(Dispatchers.IO) {
+        dao.deleteReturnDoc(nrbNo)
     }
 
     suspend fun updateStoreConfig(config: StoreConfigEntity) = withContext(Dispatchers.IO) {

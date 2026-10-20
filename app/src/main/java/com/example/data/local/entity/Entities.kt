@@ -438,6 +438,27 @@ data class StockOpnameEntity(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+@Entity(tableName = "suppliers")
+data class SupplierEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val kode: String = "",
+    val nama: String,
+    val noHp: String = "",
+    val alamat: String = "",
+    val kontakPerson: String = "",
+    val keterangan: String = ""
+)
+
+@Entity(tableName = "store_branches")
+data class StoreBranchEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val kodeToko: String = "",
+    val namaToko: String,
+    val alamat: String = "",
+    val telepon: String = "",
+    val keterangan: String = ""
+)
+
 @Entity(tableName = "purchases")
 data class PurchaseEntity(
     @PrimaryKey val noFakturBeli: String,
@@ -449,7 +470,9 @@ data class PurchaseEntity(
     val timestamp: Long = System.currentTimeMillis(),
     val totalItem: Int = 1,
     val totalNominal: Double = totalBeli,
-    val kasirNik: String = "ADMIN"
+    val kasirNik: String = "ADMIN",
+    val petugasNama: String = "Admin / Petugas Gudang",
+    val tokoTujuan: String = "Toko Utama"
 )
 
 @Entity(tableName = "purchase_items")
@@ -461,13 +484,15 @@ data class PurchaseItemEntity(
     val nama: String,
     val hargaBeli: Double,
     val qty: Int,
-    val subtotal: Double
+    val subtotal: Double,
+    val satuan: String = "PCS",
+    val konversi: Int = 1
 )
 
 @Entity(tableName = "return_docs")
 data class ReturnDocEntity(
     @PrimaryKey val nrbNo: String,
-    val tipeRetur: String = "SUPPLIER", // KONSUMEN, SUPPLIER
+    val tipeRetur: String = "SUPPLIER", // KONSUMEN, SUPPLIER, TOKO_GROSIR
     val refNo: String = "", // No Bon atau No Faktur Beli
     val fakturAsal: String = refNo,
     val supplierNama: String = "Supplier Utama",
@@ -477,7 +502,11 @@ data class ReturnDocEntity(
     val alasan: String = "",
     val keteranganRetur: String = alasan,
     val status: String = "FORM",
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val petugasNama: String = "Administrator",
+    val tokoTujuan: String = "Supplier",
+    val totalQty: Int = 0,
+    val itemsJson: String = ""
 )
 
 @Entity(tableName = "members")

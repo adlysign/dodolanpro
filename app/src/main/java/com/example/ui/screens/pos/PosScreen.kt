@@ -1453,16 +1453,16 @@ fun ItemTableRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         // NO
-        Text("${index + 1}", modifier = Modifier.weight(0.4f), fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+        Text("${index + 1}", modifier = Modifier.weight(0.35f), fontSize = 10.sp, color = Color.Black, fontWeight = FontWeight.Bold)
 
         // PLU
-        Text(item.product.plu, modifier = Modifier.weight(1.1f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+        Text(item.product.plu, modifier = Modifier.weight(0.85f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
 
         // DESKRIPSI & SATUAN (Satuan dapat diklik untuk merubah satuan)
-        Column(modifier = Modifier.weight(2.8f)) {
+        Column(modifier = Modifier.weight(2.3f)) {
             Text(
                 item.product.nama,
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 color = Color.Black
@@ -1478,7 +1478,7 @@ fun ItemTableRow(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                     ) {
                         Text(
                             item.selectedSatuan,
@@ -1490,7 +1490,7 @@ fun ItemTableRow(
                         Icon(
                             Icons.Default.ArrowDropDown,
                             contentDescription = "Ubah Satuan",
-                            modifier = Modifier.size(12.dp),
+                            modifier = Modifier.size(11.dp),
                             tint = if (item.selectedSatuan != item.product.satuan) Color.White else Color.Black
                         )
                     }
@@ -1505,9 +1505,9 @@ fun ItemTableRow(
             }
         }
 
-        // QTY CONTROLS (- dan +, serta Klik Qty Langsung)
+        // QTY CONTROLS (- dan +, serta Klik Qty Langsung - Lega & Jelas)
         Row(
-            modifier = Modifier.weight(2.0f),
+            modifier = Modifier.weight(2.4f),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1518,72 +1518,85 @@ fun ItemTableRow(
                     color = Color(0xFFECEFF1),
                     border = BorderStroke(1.dp, Color(0xFFCFD8DC)),
                     modifier = Modifier
-                        .size(26.dp)
+                        .size(22.dp)
                         .clickable { onQtyDecrease() }
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Remove, contentDescription = "Kurang Qty", modifier = Modifier.size(14.dp), tint = Color.Black)
+                        Icon(Icons.Default.Remove, contentDescription = "Kurang Qty", modifier = Modifier.size(12.dp), tint = Color.Black)
                     }
                 }
 
-                // Klik Qty untuk input langsung
+                // Klik Qty untuk input langsung - Lega & Tidak Terpotong
                 Surface(
                     shape = RoundedCornerShape(4.dp),
-                    color = Color(0xFFF8FAFC),
-                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                    color = Color(0xFFF1F5F9),
+                    border = BorderStroke(1.dp, Color(0xFF94A3B8)),
                     modifier = Modifier
-                        .padding(horizontal = 4.dp)
+                        .padding(horizontal = 2.dp)
+                        .defaultMinSize(minWidth = 30.dp)
+                        .height(24.dp)
                         .clickable { onEditQtyDirect() }
                 ) {
-                    Text(
-                        "${item.qty}",
-                        fontWeight = FontWeight.Black,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        color = Color.Black
-                    )
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 3.dp)) {
+                        Text(
+                            text = "${item.qty}",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            softWrap = false,
+                            textAlign = TextAlign.Center,
+                            color = Color.Black
+                        )
+                    }
                 }
 
                 // Tombol [+] Tambah Qty
                 Surface(
                     shape = RoundedCornerShape(4.dp),
-                    color = Color(0xFFECEFF1),
-                    border = BorderStroke(1.dp, Color(0xFFCFD8DC)),
+                    color = RetailNavy,
                     modifier = Modifier
-                        .size(26.dp)
+                        .size(22.dp)
                         .clickable { onQtyIncrease() }
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Add, contentDescription = "Tambah Qty", modifier = Modifier.size(14.dp), tint = Color.Black)
+                        Icon(Icons.Default.Add, contentDescription = "Tambah Qty", modifier = Modifier.size(12.dp), tint = Color.White)
                     }
                 }
             } else {
-                Text(if (item.isRetur) "-${item.qty}" else "${item.qty}", fontWeight = FontWeight.Black, fontSize = 13.sp, color = Color.Black)
+                Text(
+                    text = if (item.isRetur) "-${item.qty}" else "${item.qty}",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    textAlign = TextAlign.Center,
+                    color = Color.Black
+                )
             }
         }
 
         // HARGA SATUAN
         Column(
-            modifier = Modifier.weight(1.4f),
+            modifier = Modifier.weight(1.3f),
             horizontalAlignment = Alignment.End
         ) {
             if (item.promoDiscountAmount > 0 || item.unitPrice < item.baseUnitPrice) {
                 Text(
                     text = formatRupiah(item.baseUnitPrice),
-                    fontSize = 9.sp,
+                    fontSize = 8.sp,
                     color = Color.Gray,
                     style = LocalTextStyle.current.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough)
                 )
                 Text(
                     text = formatRupiah(item.unitPrice),
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     color = RetailRedPrimary
                 )
             } else {
                 Text(
                     text = formatRupiah(item.unitPrice),
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     textAlign = TextAlign.End,
                     color = Color.Black,
                     fontWeight = FontWeight.Bold
@@ -1593,28 +1606,28 @@ fun ItemTableRow(
 
         // TOTAL
         Column(
-            modifier = Modifier.weight(1.6f),
+            modifier = Modifier.weight(1.5f),
             horizontalAlignment = Alignment.End
         ) {
             if (item.isVoid) {
-                Text("Rp 0", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Gray)
+                Text("Rp 0", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Color.Gray)
             } else if (item.promoDiscountAmount > 0) {
                 Text(
                     text = formatRupiah(item.baseUnitPrice * item.qty),
-                    fontSize = 9.sp,
+                    fontSize = 8.sp,
                     color = Color.Gray,
                     style = LocalTextStyle.current.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough)
                 )
                 Text(
                     text = formatRupiah(item.subtotal),
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Black,
                     color = RetailGreen
                 )
             } else {
                 Text(
                     text = formatRupiah(item.subtotal),
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Black,
                     color = Color.Black
                 )
@@ -1623,18 +1636,18 @@ fun ItemTableRow(
 
         // AKSI (HAPUS PRODUK)
         Box(
-            modifier = Modifier.weight(0.6f),
+            modifier = Modifier.weight(0.5f),
             contentAlignment = Alignment.Center
         ) {
             IconButton(
                 onClick = onDeleteItem,
-                modifier = Modifier.size(28.dp).testTag("btn_delete_cart_item_$index")
+                modifier = Modifier.size(26.dp).testTag("btn_delete_cart_item_$index")
             ) {
                 Icon(
                     Icons.Default.DeleteOutline,
                     contentDescription = "Hapus Produk",
                     tint = RetailRedPrimary,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
@@ -1788,13 +1801,13 @@ fun ItemsTableHeader() {
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("NO", modifier = Modifier.weight(0.4f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-            Text("PLU", modifier = Modifier.weight(1.1f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-            Text("DESKRIPSI", modifier = Modifier.weight(2.8f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-            Text("QTY", modifier = Modifier.weight(2.0f), fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, color = Color.Black)
-            Text("HARGA", modifier = Modifier.weight(1.4f), fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, color = Color.Black)
-            Text("TOTAL", modifier = Modifier.weight(1.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, color = Color.Black)
-            Text("AKSI", modifier = Modifier.weight(0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, color = Color.Black)
+            Text("NO", modifier = Modifier.weight(0.35f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+            Text("PLU", modifier = Modifier.weight(0.85f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+            Text("DESKRIPSI", modifier = Modifier.weight(2.3f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+            Text("QTY", modifier = Modifier.weight(2.4f), fontSize = 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, color = Color.Black)
+            Text("HARGA", modifier = Modifier.weight(1.3f), fontSize = 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, color = Color.Black)
+            Text("TOTAL", modifier = Modifier.weight(1.5f), fontSize = 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, color = Color.Black)
+            Text("AKSI", modifier = Modifier.weight(0.5f), fontSize = 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, color = Color.Black)
         }
     }
 }

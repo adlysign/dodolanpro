@@ -29,9 +29,11 @@ import kotlinx.coroutines.launch
         BapEntity::class,
         GoodsReceiptEntity::class,
         PurchaseOrderEntity::class,
-        VoucherEntity::class
+        VoucherEntity::class,
+        SupplierEntity::class,
+        StoreBranchEntity::class
     ],
-    version = 9,
+    version = 12,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -94,6 +96,31 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE purchases ADD COLUMN petugasNama TEXT NOT NULL DEFAULT 'Admin / Petugas Gudang'")
+                database.execSQL("ALTER TABLE purchases ADD COLUMN tokoTujuan TEXT NOT NULL DEFAULT 'Toko Utama'")
+                database.execSQL("CREATE TABLE IF NOT EXISTS suppliers (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, kode TEXT NOT NULL DEFAULT '', nama TEXT NOT NULL, noHp TEXT NOT NULL DEFAULT '', alamat TEXT NOT NULL DEFAULT '', kontakPerson TEXT NOT NULL DEFAULT '', keterangan TEXT NOT NULL DEFAULT '')")
+                database.execSQL("CREATE TABLE IF NOT EXISTS store_branches (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, kodeToko TEXT NOT NULL DEFAULT '', namaToko TEXT NOT NULL, alamat TEXT NOT NULL DEFAULT '', telepon TEXT NOT NULL DEFAULT '', keterangan TEXT NOT NULL DEFAULT '')")
+            }
+        }
+
+        private val MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE return_docs ADD COLUMN petugasNama TEXT NOT NULL DEFAULT 'Administrator'")
+                database.execSQL("ALTER TABLE return_docs ADD COLUMN tokoTujuan TEXT NOT NULL DEFAULT 'Supplier'")
+                database.execSQL("ALTER TABLE return_docs ADD COLUMN totalQty INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE return_docs ADD COLUMN itemsJson TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        private val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE purchase_items ADD COLUMN satuan TEXT NOT NULL DEFAULT 'PCS'")
+                database.execSQL("ALTER TABLE purchase_items ADD COLUMN konversi INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val appContext = context.applicationContext
@@ -102,7 +129,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "dodolan_pro_db"
                 )
-                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     .fallbackToDestructiveMigration()
                     .addCallback(DatabaseCallback(appContext, scope))
                     .build()
@@ -140,6 +167,26 @@ abstract class AppDatabase : RoomDatabase() {
                         val owner = dao.getCashierByNik("11111111")
                         if (owner == null) {
                             dao.insertCashier(CashierUserEntity.createWithRole("11111111", "Owner", "1234", "OWNER"))
+                        }
+                        if (dao.getAllSuppliersList().isEmpty()) {
+                            dao.insertSuppliers(
+                                listOf(
+                                    SupplierEntity(kode = "SUP-001", nama = "DC SAT CILEUNGSI", noHp = "021-82490001", alamat = "Kawasan Industri Menara, Cileungsi", kontakPerson = "Bpk. Hendra"),
+                                    SupplierEntity(kode = "SUP-002", nama = "PT INDOMARCO PRISMATAMA", noHp = "021-88991234", alamat = "Ancol Barat, Jakarta Utara", kontakPerson = "Ibu Maya"),
+                                    SupplierEntity(kode = "SUP-003", nama = "PT WINGS SURYA", noHp = "021-4601111", alamat = "Pulo Gadung, Jakarta Timur", kontakPerson = "Bpk. Bambang"),
+                                    SupplierEntity(kode = "SUP-004", nama = "DISTRIBUTOR SEMBAKO JAYA", noHp = "0812-9988-7766", alamat = "Pasar Induk Kramat Jati", kontakPerson = "H. Supardi")
+                                )
+                            )
+                        }
+                        if (dao.getAllStoreBranchesList().isEmpty()) {
+                            dao.insertStoreBranches(
+                                listOf(
+                                    StoreBranchEntity(kodeToko = "TKG-001", namaToko = "Toko Grosir Berkah Jaya", alamat = "Pasar Induk Kramat Jati Blok A", telepon = "0812-1111-2222", keterangan = "Agen Sembako & Minyak"),
+                                    StoreBranchEntity(kodeToko = "TKG-002", namaToko = "Agen Grosir Sembako Sumber Rejeki", alamat = "Jl. Raya Pasar Minggu No. 12", telepon = "0813-3333-4444", keterangan = "Grosir Snack & Minuman"),
+                                    StoreBranchEntity(kodeToko = "TKG-003", namaToko = "Grosir Plastik & Bahan Kue Makmur", alamat = "Pasar Baru No. 45", telepon = "0815-5555-6666", keterangan = "Grosir Perlengkapan & Plastik"),
+                                    StoreBranchEntity(kodeToko = "TKG-004", namaToko = "Agen Grosir Rokok & Kopi Sentosa", alamat = "Jl. Mangga Dua No. 8", telepon = "0817-7777-8888", keterangan = "Agen Grosir Rokok & Kopi")
+                                )
+                            )
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -212,6 +259,24 @@ abstract class AppDatabase : RoomDatabase() {
                     VoucherEntity("VCR-HEMAT10K", 10000.0, 50000.0, todayStr, expFuture, isUsed = false, bonNoAsal = "INIT-02"),
                     VoucherEntity("VCR-EXPIRED", 5000.0, 20000.0, expPast, expPast, isUsed = false, bonNoAsal = "INIT-03"),
                     VoucherEntity("VCR-TERPAKAI", 5000.0, 20000.0, todayStr, expFuture, isUsed = true, usedAtBonNo = "BON-DEMO-001", bonNoAsal = "INIT-04")
+                )
+            )
+
+            dao.insertSuppliers(
+                listOf(
+                    SupplierEntity(kode = "SUP-001", nama = "DC SAT CILEUNGSI", noHp = "021-82490001", alamat = "Kawasan Industri Menara, Cileungsi", kontakPerson = "Bpk. Hendra"),
+                    SupplierEntity(kode = "SUP-002", nama = "PT INDOMARCO PRISMATAMA", noHp = "021-88991234", alamat = "Ancol Barat, Jakarta Utara", kontakPerson = "Ibu Maya"),
+                    SupplierEntity(kode = "SUP-003", nama = "PT WINGS SURYA", noHp = "021-4601111", alamat = "Pulo Gadung, Jakarta Timur", kontakPerson = "Bpk. Bambang"),
+                    SupplierEntity(kode = "SUP-004", nama = "DISTRIBUTOR SEMBAKO JAYA", noHp = "0812-9988-7766", alamat = "Pasar Induk Kramat Jati", kontakPerson = "H. Supardi")
+                )
+            )
+
+            dao.insertStoreBranches(
+                listOf(
+                    StoreBranchEntity(kodeToko = "TKG-001", namaToko = "Toko Grosir Berkah Jaya", alamat = "Pasar Induk Kramat Jati Blok A", telepon = "0812-1111-2222", keterangan = "Agen Sembako & Minyak"),
+                    StoreBranchEntity(kodeToko = "TKG-002", namaToko = "Agen Grosir Sembako Sumber Rejeki", alamat = "Jl. Raya Pasar Minggu No. 12", telepon = "0813-3333-4444", keterangan = "Grosir Snack & Minuman"),
+                    StoreBranchEntity(kodeToko = "TKG-003", namaToko = "Grosir Plastik & Bahan Kue Makmur", alamat = "Pasar Baru No. 45", telepon = "0815-5555-6666", keterangan = "Grosir Perlengkapan & Plastik"),
+                    StoreBranchEntity(kodeToko = "TKG-004", namaToko = "Agen Grosir Rokok & Kopi Sentosa", alamat = "Jl. Mangga Dua No. 8", telepon = "0817-7777-8888", keterangan = "Agen Grosir Rokok & Kopi")
                 )
             )
         }

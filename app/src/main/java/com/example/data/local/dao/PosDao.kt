@@ -204,6 +204,12 @@ interface PosDao {
     @Update
     suspend fun updateReturnDoc(doc: ReturnDocEntity)
 
+    @Query("SELECT * FROM return_docs WHERE nrbNo = :nrbNo LIMIT 1")
+    suspend fun getReturnDoc(nrbNo: String): ReturnDocEntity?
+
+    @Query("DELETE FROM return_docs WHERE nrbNo = :nrbNo")
+    suspend fun deleteReturnDoc(nrbNo: String)
+
     // Orders & Receipts
     @Query("SELECT * FROM purchase_orders ORDER BY poNo DESC")
     fun getAllPurchaseOrders(): Flow<List<PurchaseOrderEntity>>
@@ -304,6 +310,50 @@ interface PosDao {
 
     @Query("DELETE FROM employee_schedules")
     suspend fun clearSchedules()
+
+    // Suppliers
+    @Query("SELECT * FROM suppliers ORDER BY nama ASC")
+    fun getAllSuppliers(): Flow<List<SupplierEntity>>
+
+    @Query("SELECT * FROM suppliers ORDER BY nama ASC")
+    suspend fun getAllSuppliersList(): List<SupplierEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSupplier(supplier: SupplierEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSuppliers(suppliers: List<SupplierEntity>)
+
+    @Update
+    suspend fun updateSupplier(supplier: SupplierEntity)
+
+    @Delete
+    suspend fun deleteSupplier(supplier: SupplierEntity)
+
+    @Query("DELETE FROM suppliers")
+    suspend fun clearSuppliers()
+
+    // Store Branches
+    @Query("SELECT * FROM store_branches ORDER BY namaToko ASC")
+    fun getAllStoreBranches(): Flow<List<StoreBranchEntity>>
+
+    @Query("SELECT * FROM store_branches ORDER BY namaToko ASC")
+    suspend fun getAllStoreBranchesList(): List<StoreBranchEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertStoreBranch(branch: StoreBranchEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertStoreBranches(branches: List<StoreBranchEntity>)
+
+    @Update
+    suspend fun updateStoreBranch(branch: StoreBranchEntity)
+
+    @Delete
+    suspend fun deleteStoreBranch(branch: StoreBranchEntity)
+
+    @Query("DELETE FROM store_branches")
+    suspend fun clearStoreBranches()
 
     // Vouchers
     @Query("SELECT * FROM vouchers ORDER BY timestamp DESC")

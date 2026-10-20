@@ -701,15 +701,30 @@ fun ProductEditorDialog(
                                     singleLine = true,
                                     colors = tfColors
                                 )
-                                OutlinedTextField(
-                                    value = stokStr,
-                                    onValueChange = { stokStr = it },
-                                    label = { Text("Stok Sekarang") },
-                                    modifier = Modifier.weight(1f),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    singleLine = true,
-                                    colors = tfColors
-                                )
+                                // Stok tidak dapat diedit manual - hanya dari menu Pembelian
+                                Surface(
+                                    color = Color(0xFFF1F5F9),
+                                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                    shape = RoundedCornerShape(4.dp),
+                                    modifier = Modifier.weight(1.2f).height(56.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Text("Stok (Hanya Pembelian)", fontSize = 9.sp, color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color(0xFF64748B))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                if (isEdit) "${productToEdit?.stok ?: 0} $satuan" else "0 $satuan (Baru)",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = Color(0xFF334155)
+                                            )
+                                        }
+                                    }
+                                }
                                 OutlinedTextField(
                                     value = minStokStr,
                                     onValueChange = { minStokStr = it },
@@ -719,6 +734,27 @@ fun ProductEditorDialog(
                                     singleLine = true,
                                     colors = tfColors
                                 )
+                            }
+
+                            Surface(
+                                color = Color(0xFFEFF6FF),
+                                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                                shape = RoundedCornerShape(4.dp),
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Lock, contentDescription = null, tint = RetailNavy, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        "Stok terkunci. Penambahan stok hanya dapat diproses dari menu Pembelian Supplier & Toko.",
+                                        fontSize = 10.sp,
+                                        color = RetailNavy,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(14.dp))
@@ -1210,7 +1246,7 @@ fun ProductEditorDialog(
                                 hargaBeli = hargaBeliStr.toDoubleOrNull() ?: 0.0,
                                 hargaJual = hargaJualStr.toDoubleOrNull() ?: 0.0,
                                 hargaMember = hargaJualStr.toDoubleOrNull() ?: 0.0,
-                                stok = stokStr.toIntOrNull() ?: 0,
+                                stok = if (isEdit) (productToEdit?.stok ?: 0) else 0,
                                 minStok = minStokStr.toIntOrNull() ?: 5,
                                 satuan = satuan.trim().uppercase().ifEmpty { "PCS" },
                                 rakPlanogram = rak.trim().ifEmpty { "001-01" },
