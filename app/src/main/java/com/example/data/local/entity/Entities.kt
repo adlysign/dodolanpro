@@ -55,10 +55,10 @@ data class StoreConfigEntity(
     val voucherMinBelanjaPakai: Double = 30000.0,
     val voucherMasaBerlakuHari: Int = 7,
     val voucherPrefix: String = "VCR",
-    val isLicensed: Boolean = true,
-    val licenseKey: String = "PRO-OFFLINE-FULL-2026",
-    val licenseType: String = "PRO_FULL",
-    val licenseExpiryDate: String = "LIFETIME",
+    val isLicensed: Boolean = false,
+    val licenseKey: String = "",
+    val licenseType: String = "TRIAL",
+    val licenseExpiryDate: String = "TRIAL",
     val donasiDefault: Double = 0.0,
     val isTaxActive: Boolean = false,
     val taxName: String = "PPN",
@@ -81,8 +81,11 @@ data class StoreConfigEntity(
     val printerFontSize: String = "NORMAL", // NORMAL, CONDENSED
     val autoPrintReceipt: Boolean = true
 ) {
-    val licenseStatus: String get() = if (isLicensed) "AKTIF" else "TIDAK AKTIF"
+    val licenseStatus: String get() = if (isLicensed) licenseType else "TRIAL"
     val licenseTier: String get() = licenseType
+    val isTrial: Boolean get() = !isLicensed || licenseType.equals("TRIAL", ignoreCase = true)
+    val isPro: Boolean get() = isLicensed && licenseType.contains("PRO", ignoreCase = true)
+    val isEnterprise: Boolean get() = isLicensed && licenseType.contains("ENTERPRISE", ignoreCase = true)
 }
 
 @Entity(tableName = "cashier_users")

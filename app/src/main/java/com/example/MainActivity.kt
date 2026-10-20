@@ -130,6 +130,10 @@ class MainActivity : ComponentActivity() {
                             viewModel = viewModel,
                             onNavigateBack = { viewModel.navigateTo(PosNavDestination.SIS_DASHBOARD) }
                         )
+                        PosNavDestination.SINKRONISASI_MULTI_DEVICE -> MultiDeviceSyncScreen(
+                            viewModel = viewModel,
+                            onNavigateBack = { viewModel.navigateTo(PosNavDestination.SIS_DASHBOARD) }
+                        )
                         PosNavDestination.PRODUK -> ProductManagementScreen(
                             viewModel = viewModel,
                             onNavigateBack = { viewModel.navigateTo(PosNavDestination.SIS_DASHBOARD) }

@@ -34,7 +34,8 @@ enum class PosNavDestination {
     PENGATURAN_SHIFT,
     PENGATURAN_PRINTER,
     BACKUP_RESTORE,
-    SIS_DASHBOARD
+    SIS_DASHBOARD,
+    SINKRONISASI_MULTI_DEVICE
 }
 
 sealed class PosShortcutEvent {
@@ -219,8 +220,21 @@ data class PendingCart(
 
 class PosViewModel(application: Application) : AndroidViewModel(application) {
 
+    companion object {
+        const val TRIAL_TRANSACTION_LIMIT = 50
+    }
+
     private val db = AppDatabase.getDatabase(application, viewModelScope)
     val repository = PosRepository(db.posDao())
+
+    // Multi-Device Synchronization Manager
+    val syncManager = com.example.data.sync.PosSyncManager(application, repository)
+    val syncConfig = syncManager.syncConfig
+    val syncStatus = syncManager.syncStatus
+
+    fun isTrialLimitReached(): Boolean {
+        return storeConfig.value.isTrial && allTransactions.value.size >= TRIAL_TRANSACTION_LIMIT
+    }
 
     // Navigation
     private val _currentDestination = MutableStateFlow(PosNavDestination.KASIR)
@@ -274,6 +288,24 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                     _currentCashier.value = user
                     _isUserLoggedIn.value = true
                 }
+            }
+        }
+
+        // Real-Time Multi-Device Sync & Heartbeat Loop
+        viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(4000L)
+                try {
+                    val cfg = syncManager.syncConfig.value
+                    val localPending = _pendingCarts.value.size + (if (_cartItems.value.isNotEmpty()) 1 else 0)
+                    val nik = _currentCashier.value?.nik ?: "001"
+                    val name = _currentCashier.value?.nama ?: "Kasir"
+                    if (cfg.role == com.example.data.sync.SyncRole.CLIENT) {
+                        syncManager.sendClientHeartbeat(localPending, nik, name)
+                    } else if (cfg.role == com.example.data.sync.SyncRole.SERVER) {
+                        syncManager.registerLocalDeviceAsServer(nik, name, localPending)
+                    }
+                } catch (_: Exception) {}
             }
         }
     }
@@ -1198,6 +1230,11 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             onComplete(false, "Shift belum dibuka! Harap buka shift kasir terlebih dahulu.")
             return
         }
+        val config = storeConfig.value
+        if (config.isTrial && allTransactions.value.size >= TRIAL_TRANSACTION_LIMIT) {
+            onComplete(false, "Batas maksimal $TRIAL_TRANSACTION_LIMIT transaksi masa Trial telah tercapai. Silakan aktivasi lisensi Pro atau Enterprise untuk melanjutkan tanpa batasan.")
+            return
+        }
         val items = _cartItems.value
         if (items.isEmpty()) {
             onComplete(false, "Keranjang belanja kosong")
@@ -1264,6 +1301,11 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         refPembayaran: String = "",
         onComplete: (Boolean, String, TransactionEntity?) -> Unit
     ) {
+        val config = storeConfig.value
+        if (config.isTrial && allTransactions.value.size >= TRIAL_TRANSACTION_LIMIT) {
+            onComplete(false, "Batas maksimal $TRIAL_TRANSACTION_LIMIT transaksi masa Trial telah tercapai. Silakan aktivasi lisensi Pro atau Enterprise untuk melanjutkan tanpa batasan.", null)
+            return
+        }
         val items = _cartItems.value
         if (items.isEmpty()) {
             onComplete(false, "Keranjang belanja kosong", null)
@@ -1380,10 +1422,62 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 _appliedVoucherDiscount.value = 0.0
                 _appliedPoin.value = 0
                 _currentBonNo.value = generateNewBonNo()
+
+                // Push completed sale to server if this is a Client device
+                if (syncManager.syncConfig.value.role == com.example.data.sync.SyncRole.CLIENT) {
+                    viewModelScope.launch {
+                        syncManager.pushSaleToServer(
+                            bonNo = bonNo,
+                            cashierNik = kasir.nik,
+                            memberNo = _currentMember.value?.memberNo,
+                            subtotal = sub,
+                            discount = (sub - grandTotal.value).coerceAtLeast(0.0),
+                            grandTotal = grand,
+                            paymentMethod = caraBayar,
+                            nominalBayar = bayarTunai,
+                            nominalKembalian = kembalian,
+                            items = items,
+                            timestamp = System.currentTimeMillis()
+                        )
+                    }
+                }
+
                 onComplete(true, "Transaksi berhasil diproses", tx)
             } else {
                 onComplete(false, "Gagal memproses transaksi di database", null)
             }
+        }
+    }
+
+    // Multi-Device Synchronization Controls
+    fun updateSyncConfig(newConfig: com.example.data.sync.SyncConfig) {
+        syncManager.saveConfig(newConfig)
+    }
+
+    fun syncCatalogFromServer(onDone: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val result = syncManager.syncCatalogFromServer()
+            onDone(result.first, result.second)
+        }
+    }
+
+    fun testSyncConnection(onDone: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val localPending = _pendingCarts.value.size + (if (_cartItems.value.isNotEmpty()) 1 else 0)
+            val nik = _currentCashier.value?.nik ?: "001"
+            val name = _currentCashier.value?.nama ?: "Kasir"
+            val res = syncManager.sendClientHeartbeat(localPending, nik, name)
+            onDone(res.first, res.second)
+        }
+    }
+
+    fun checkMultiDeviceEodPending(onResult: (com.example.data.sync.EodPendingCheckResult) -> Unit) {
+        viewModelScope.launch {
+            val localPending = _pendingCarts.value.size + (if (_cartItems.value.isNotEmpty()) 1 else 0)
+            val nik = _currentCashier.value?.nik ?: "001"
+            val name = _currentCashier.value?.nama ?: "Kasir"
+            val result = syncManager.checkEodPendingStatus(localPending, nik, name)
+            onResult(result)
         }
     }
 
@@ -1808,22 +1902,37 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    val deviceId: String
+        get() = syncConfig.value.deviceId
+
     fun activateOrUpgradeLicense(key: String, onComplete: (Boolean, String) -> Unit) {
-        val trimmed = key.trim().uppercase()
-        val tier = when {
-            trimmed.contains("ENTERPRISE") -> "ENTERPRISE LIFETIME"
-            trimmed.contains("PRO") -> "PRO FULL OFFLINE"
-            else -> "AKTIF STANDARD"
+        val devId = syncConfig.value.deviceId
+        val (isValid, tierOrMsg) = com.example.util.PosLicenseHelper.validateLicenseKey(devId, key)
+        if (isValid) {
+            val currentCfg = storeConfig.value
+            val updated = currentCfg.copy(
+                isLicensed = true,
+                licenseKey = key.trim().uppercase(),
+                licenseType = tierOrMsg,
+                licenseExpiryDate = "LIFETIME"
+            )
+            updateStoreConfig(updated)
+            onComplete(true, "Selamat! Lisensi $tierOrMsg berhasil diaktifkan.")
+        } else {
+            onComplete(false, tierOrMsg)
         }
+    }
+
+    fun resetLicenseToTrial(onComplete: () -> Unit) {
         val currentCfg = storeConfig.value
         val updated = currentCfg.copy(
-            isLicensed = true,
-            licenseKey = key.trim(),
-            licenseType = tier,
-            licenseExpiryDate = "LIFETIME"
+            isLicensed = false,
+            licenseKey = "",
+            licenseType = "TRIAL",
+            licenseExpiryDate = "TRIAL"
         )
         updateStoreConfig(updated)
-        onComplete(true, "Lisensi berhasil diaktifkan: $tier")
+        onComplete()
     }
 
     fun restoreBackup(jsonContent: String, onDone: (Boolean) -> Unit) {
@@ -1845,6 +1954,41 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             onDone(false)
         }
     }
+
+    fun restoreBackupFromUri(uri: android.net.Uri, onDone: (Boolean, String) -> Unit) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val context = getApplication<Application>()
+                val inputStream = context.contentResolver.openInputStream(uri)
+                if (inputStream == null) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onDone(false, "Tidak dapat membuka berkas dari penyimpanan Android.")
+                    }
+                    return@launch
+                }
+                val json = inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                if (json.isBlank()) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onDone(false, "Berkas backup kosong.")
+                    }
+                    return@launch
+                }
+                val success = repository.restoreDatabaseFromJson(json)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    if (success) {
+                        onDone(true, "Database berhasil dipulihkan dari berkas storage!")
+                    } else {
+                        onDone(false, "Format berkas backup tidak valid / struktur data tidak sesuai.")
+                    }
+                }
+            } catch (e: Exception) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onDone(false, "Gagal memulihkan backup: ${e.localizedMessage ?: e.message}")
+                }
+            }
+        }
+    }
+
 
     fun autoPendingCartOnEvent(reason: String = "") {
         if (_cartItems.value.isNotEmpty()) {

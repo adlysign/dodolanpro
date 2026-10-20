@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DodolanPro - License Key Generator</title>
+    <style>
+        :root {
+            --primary: #0F172A;
+            --primary-light: #1E293B;
+            --accent-pro: #2563EB;
+            --accent-ent: #059669;
+            --bg: #F8FAFC;
+            --card-bg: #FFFFFF;
+            --border: #E2E8F0;
+            --text-main: #0F172A;
+            --text-muted: #64748B;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 24px 16px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 760px;
+        }
+
+        header {
+            background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+            color: white;
+            padding: 28px 24px;
+            border-radius: 16px;
+            margin-bottom: 24px;
+            box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.15);
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        header p {
+            color: #94A3B8;
+            font-size: 14px;
+        }
+
+        .badge-header {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.1);
+            color: #38BDF8;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 20px;
+            margin-top: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        .section-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s;
+            background: #F8FAFC;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--accent-pro);
+            background: #FFFFFF;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+        }
+
+        .package-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .package-card {
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .package-card.selected-pro {
+            border-color: var(--accent-pro);
+            background: #EFF6FF;
+        }
+
+        .package-card.selected-ent {
+            border-color: var(--accent-ent);
+            background: #ECFDF5;
+        }
+
+        .package-card input[type="radio"] {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+        }
+
+        .package-card .pkg-title {
+            font-size: 14px;
+            font-weight: 800;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .pkg-pro .pkg-title { color: var(--accent-pro); }
+        .pkg-ent .pkg-title { color: var(--accent-ent); }
+
+        .package-card .pkg-desc {
+            font-size: 11px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .btn-generate {
+            width: 100%;
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+            transition: all 0.2s;
+        }
+
+        .btn-generate:hover {
+            opacity: 0.95;
+            transform: translateY(-1px);
+        }
+
+        /* Result Section */
+        .result-box {
+            display: none;
+            background: #0F172A;
+            color: white;
+            border-radius: 14px;
+            padding: 20px;
+            margin-top: 20px;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.25);
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 12px;
+            color: #94A3B8;
+        }
+
+        .key-display {
+            font-family: "Courier New", Courier, monospace;
+            font-size: 22px;
+            font-weight: 800;
+            color: #FACC15;
+            letter-spacing: 1.5px;
+            text-align: center;
+            padding: 14px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 8px;
+            margin-bottom: 16px;
+            word-break: break-all;
+            user-select: all;
+        }
+
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .btn-action {
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .btn-copy {
+            background: #2563EB;
+            color: white;
+        }
+
+        .btn-wa {
+            background: #22C55E;
+            color: white;
+        }
+
+        .btn-action:hover {
+            opacity: 0.9;
+        }
+
+        /* History Table */
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+
+        .history-table th {
+            text-align: left;
+            padding: 10px;
+            background: #F1F5F9;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .history-table td {
+            padding: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .badge-pill {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 6px;
+        }
+
+        .badge-pro {
+            background: #DBEAFE;
+            color: #1D4ED8;
+        }
+
+        .badge-ent {
+            background: #D1FAE5;
+            color: #065F46;
+        }
+
+        .instructions {
+            background: #F0FDF4;
+            border: 1px solid #BBF7D0;
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 12px;
+            color: #166534;
+            line-height: 1.6;
+        }
+
+        .instructions h4 {
+            font-weight: 800;
+            margin-bottom: 6px;
+        }
+
+        @media (max-width: 600px) {
+            .package-grid {
+                grid-template-columns: 1fr;
+            }
+            .btn-group {
+                grid-template-columns: 1fr;
+            }
+            .key-display {
+                font-size: 17px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>🔑 DodolanPro License Generator</h1>
+        <p>Alat Resmi Pembuat Kode Lisensi DodolanPro Kasir & SIS Retail</p>
+        <span class="badge-header">OFFLINE GENERATOR • PERMANEN & AMAN</span>
+    </header>
+
+    <div class="card">
+        <div class="section-title">
+            <span>⚙️</span> Buat Lisensi Pelanggan
+        </div>
+
+        <div class="form-group">
+            <label for="deviceId">ID Device Pelanggan</label>
+            <input type="text" id="deviceId" placeholder="Contoh: DEV-A1B2C3 atau DP-784920" autocomplete="off" autofocus>
+            <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">
+                Pelanggan dapat melihat ID Device di pojok kanan atas menu SIS pada aplikasi kasir.
+            </small>
+        </div>
+
+        <div class="form-group">
+            <label for="customerName">Nama Toko / Pelanggan (Catatan)</label>
+            <input type="text" id="customerName" placeholder="Contoh: Toko Barokah Jaya (Bpk. Ahmad)">
+        </div>
+
+        <label>Pilih Paket Lisensi</label>
+        <div class="package-grid">
+            <div class="package-card pkg-pro selected-pro" id="cardPro" onclick="selectPackage('PRO')">
+                <input type="radio" name="licenseTier" id="tierPro" value="PRO" checked>
+                <div class="pkg-title">
+                    <span>⚡</span> PRO LIFETIME
+                </div>
+                <div class="pkg-desc">
+                    Khusus Kasir Tunggal (Single Device Mode). Menu sinkronisasi multi-device otomatis disembunyikan.
+                </div>
+            </div>
+
+            <div class="package-card pkg-ent" id="cardEnt" onclick="selectPackage('ENTERPRISE')">
+                <input type="radio" name="licenseTier" id="tierEnt" value="ENTERPRISE">
+                <div class="pkg-title">
+                    <span>👑</span> ENTERPRISE
+                </div>
+                <div class="pkg-desc">
+                    Mendukung Multi-Device Real-Time Sync (Server Master & Klien Kasir tak terbatas).
+                </div>
+            </div>
+        </div>
+
+        <button class="btn-generate" onclick="generateKey()">GENERATE KODE LISENSI</button>
+
+        <!-- Result Box -->
+        <div class="result-box" id="resultBox">
+            <div class="result-header">
+                <span id="resultTierLabel">PAKET: PRO LIFETIME</span>
+                <span id="resultDateLabel">2026-10-20</span>
+            </div>
+            <div class="key-display" id="keyDisplay">PRO-XXXXXX-XXXX-XXXX</div>
+
+            <div class="btn-group">
+                <button class="btn-action btn-copy" onclick="copyKeyOnly()">📋 Salin Kode Lisensi</button>
+                <button class="btn-action btn-wa" onclick="copyWhatsAppMessage()">💬 Salin Pesan WhatsApp</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Instructions Card -->
+    <div class="card instructions">
+        <h4>CARA PENGGUNAAN OLEH PEMBELI:</h4>
+        <ol style="margin-left: 18px; margin-top: 6px;">
+            <li>Minta pelanggan membuka menu <b>SIS</b> di aplikasi DodolanPro.</li>
+            <li>Pelanggan melihat dan menyalin <b>ID Device</b> di tombol pojok kanan atas.</li>
+            <li>Masukkan ID Device tersebut di generator ini, pilih paket (PRO / ENTERPRISE), lalu klik <b>GENERATE KODE LISENSI</b>.</li>
+            <li>Kirimkan kode lisensi ke pelanggan via WhatsApp.</li>
+            <li>Pelanggan menekan tombol ID Device di menu SIS &rarr; memasukkan kode lisensi &rarr; klik <b>AKTIFKAN LISENSI</b>.</li>
+        </ol>
+    </div>
+
+    <!-- History Card -->
+    <div class="card">
+        <div class="section-title" style="justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span>📜</span> Riwayat Lisensi Terbit
+            </div>
+            <button onclick="clearHistory()" style="background: none; border: none; color: #EF4444; font-size: 11px; cursor: pointer;">Hapus Riwayat</button>
+        </div>
+        <div style="overflow-x: auto;">
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>Waktu</th>
+                        <th>Toko / Pelanggan</th>
+                        <th>ID Device</th>
+                        <th>Paket</th>
+                        <th>Kode Lisensi</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody">
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--text-muted);">Belum ada riwayat lisensi yang di-generate.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const SALT = "DODOLAN_PRO_RETAIL_SECRET_SALT_2026";
+
+    function selectPackage(tier) {
+        const cardPro = document.getElementById("cardPro");
+        const cardEnt = document.getElementById("cardEnt");
+        const radioPro = document.getElementById("tierPro");
+        const radioEnt = document.getElementById("tierEnt");
+
+        if (tier === "PRO") {
+            radioPro.checked = true;
+            cardPro.classList.add("selected-pro");
+            cardEnt.classList.remove("selected-ent");
+        } else {
+            radioEnt.checked = true;
+            cardEnt.classList.add("selected-ent");
+            cardPro.classList.remove("selected-pro");
+        }
+    }
+
+    // Pure JavaScript SHA-256 (100% offline without dependencies)
+    function sha256(ascii) {
+        function rightRotate(value, amount) {
+            return (value >>> amount) | (value << (32 - amount));
+        }
+        var mathPow = Math.pow;
+        var maxWord = mathPow(2, 32);
+        var lengthProperty = 'length';
+        var i, j;
+        var result = '';
+        var words = [];
+        var asciiBitLength = ascii[lengthProperty] * 8;
+        var hash = [];
+        var k = [];
+        var primeCounter = 0;
+
+        var isComposite = {};
+        for (var candidate = 2; primeCounter < 64; candidate++) {
+            if (!isComposite[candidate]) {
+                for (i = 0; i < 313; i += candidate) {
+                    isComposite[i] = candidate;
+                }
+                hash[primeCounter] = (mathPow(candidate, .5) * maxWord) | 0;
+                k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+            }
+        }
+
+        ascii += '\x80';
+        while (ascii[lengthProperty] % 64 - 56) ascii += '\x00';
+        for (i = 0; i < ascii[lengthProperty]; i++) {
+            j = ascii.charCodeAt(i);
+            if (j >> 8) return;
+            words[i >> 2] |= j << ((3 - i) % 4) * 8;
+        }
+        words[words[lengthProperty]] = ((asciiBitLength / maxWord) | 0);
+        words[words[lengthProperty]] = (asciiBitLength);
+
+        for (j = 0; j < words[lengthProperty];) {
+            var w = words.slice(j, j += 16);
+            var oldHash = hash;
+            hash = hash.slice(0, 8);
+
+            for (i = 0; i < 64; i++) {
+                var w15 = w[i - 15], w2 = w[i - 2];
+                var a = hash[0], e = hash[4];
+                var temp1 = hash[7]
+                    + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))
+                    + ((e & hash[5]) ^ ((~e) & hash[6]))
+                    + k[i]
+                    + (w[i] = (i < 16) ? w[i] : (
+                        w[i - 16]
+                        + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3))
+                        + w[i - 7]
+                        + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))
+                    ) | 0
+                );
+                var temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))
+                    + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+
+                hash = [(temp1 + temp2) | 0].concat(hash);
+                hash[4] = (hash[4] + temp1) | 0;
+            }
+
+            for (i = 0; i < 8; i++) {
+                hash[i] = (hash[i] + oldHash[i]) | 0;
+            }
+        }
+
+        for (i = 0; i < 8; i++) {
+            for (j = 3; j + 1; j--) {
+                var b = (hash[i] >> (j * 8)) & 255;
+                result += ((b < 16) ? 0 : '') + b.toString(16);
+            }
+        }
+        return result.toUpperCase();
+    }
+
+    function cleanDeviceId(raw) {
+        var clean = (raw || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        if (clean.length < 4) {
+            clean = (clean + "DP00").substring(0, 6);
+        } else {
+            clean = clean.substring(0, 6);
+        }
+        return clean;
+    }
+
+    var lastGeneratedData = null;
+
+    function generateKey() {
+        var devIdInput = document.getElementById("deviceId").value.trim();
+        var custName = document.getElementById("customerName").value.trim() || "Pelanggan";
+        var isPro = document.getElementById("tierPro").checked;
+        var tier = isPro ? "PRO" : "ENTERPRISE";
+        var tierPrefix = isPro ? "PRO" : "ENT";
+
+        if (!devIdInput) {
+            alert("Harap masukkan ID Device pelanggan terlebih dahulu!");
+            document.getElementById("deviceId").focus();
+            return;
+        }
+
+        var cleanDev = cleanDeviceId(devIdInput);
+        var seed = tierPrefix + ":" + cleanDev + ":" + SALT;
+        var hash = sha256(seed);
+        var p1 = hash.substring(0, 4);
+        var p2 = hash.substring(4, 8);
+        var finalKey = tierPrefix + "-" + cleanDev + "-" + p1 + "-" + p2;
+
+        var now = new Date();
+        var dateStr = now.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+        lastGeneratedData = {
+            key: finalKey,
+            tier: tier,
+            tierName: isPro ? "PRO LIFETIME" : "ENTERPRISE LIFETIME",
+            deviceId: devIdInput.toUpperCase(),
+            cleanDev: cleanDev,
+            customer: custName,
+            date: dateStr
+        };
+
+        // Display
+        document.getElementById("resultTierLabel").innerText = "PAKET: " + (isPro ? "PRO LIFETIME" : "ENTERPRISE LIFETIME");
+        document.getElementById("resultDateLabel").innerText = dateStr;
+        document.getElementById("keyDisplay").innerText = finalKey;
+        document.getElementById("resultBox").style.display = "block";
+
+        // Save to History
+        saveToHistory(lastGeneratedData);
+        renderHistory();
+    }
+
+    function copyKeyOnly() {
+        if (!lastGeneratedData) return;
+        navigator.clipboard.writeText(lastGeneratedData.key).then(function() {
+            alert("Kode lisensi berhasil disalin: " + lastGeneratedData.key);
+        });
+    }
+
+    function copyWhatsAppMessage() {
+        if (!lastGeneratedData) return;
+        var msg = "Halo " + lastGeneratedData.customer + ",\n\n" +
+            "Terima kasih telah membeli lisensi DodolanPro Retail!\n\n" +
+            "Detail Lisensi:\n" +
+            "• Paket: " + lastGeneratedData.tierName + "\n" +
+            "• ID Device: " + lastGeneratedData.deviceId + "\n" +
+            "• Kode Lisensi: " + lastGeneratedData.key + "\n\n" +
+            "Petunjuk Aktivasi:\n" +
+            "1. Buka menu SIS di aplikasi kasir DodolanPro.\n" +
+            "2. Klik tombol ID Device / Status di pojok kanan atas.\n" +
+            "3. Masukkan Kode Lisensi di atas, lalu klik AKTIFKAN LISENSI.\n\n" +
+            "Aplikasi siap digunakan selamanya (Lifetime)!";
+
+        navigator.clipboard.writeText(msg).then(function() {
+            alert("Pesan WhatsApp siap kirim berhasil disalin ke clipboard!");
+        });
+    }
+
+    function saveToHistory(item) {
+        var list = JSON.parse(localStorage.getItem("dodolan_license_history") || "[]");
+        list.unshift(item);
+        if (list.length > 50) list = list.slice(0, 50);
+        localStorage.setItem("dodolan_license_history", JSON.stringify(list));
+    }
+
+    function clearHistory() {
+        if (confirm("Hapus seluruh catatan riwayat lisensi?")) {
+            localStorage.removeItem("dodolan_license_history");
+            renderHistory();
+        }
+    }
+
+    function renderHistory() {
+        var list = JSON.parse(localStorage.getItem("dodolan_license_history") || "[]");
+        var tbody = document.getElementById("historyBody");
+        if (list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Belum ada riwayat lisensi yang di-generate.</td></tr>';
+            return;
+        }
+
+        var html = "";
+        for (var i = 0; i < list.length; i++) {
+            var item = list[i];
+            var isPro = item.tier === "PRO";
+            html += '<tr>' +
+                '<td>' + item.date + '</td>' +
+                '<td><b>' + item.customer + '</b></td>' +
+                '<td><code>' + item.deviceId + '</code></td>' +
+                '<td><span class="badge-pill ' + (isPro ? "badge-pro" : "badge-ent") + '">' + item.tier + '</span></td>' +
+                '<td><code style="font-weight: bold; color: #0F172A;">' + item.key + '</code></td>' +
+                '</tr>';
+        }
+        tbody.innerHTML = html;
+    }
+
+    // Init history on load
+    renderHistory();
+</script>
+
+</body>
+</html>

@@ -1,6 +1,12 @@
 package com.example.ui.screens.sis
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -15,7 +21,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,29 +46,55 @@ fun SisDashboardScreen(
     viewModel: PosViewModel,
     onNavigateTo: (PosNavDestination) -> Unit
 ) {
+    val context = LocalContext.current
     val storeConfig by viewModel.storeConfig.collectAsState()
-    val allProducts by viewModel.allProducts.collectAsState()
     val allTransactions by viewModel.allTransactions.collectAsState()
+    val syncConfig by viewModel.syncConfig.collectAsState()
 
-    val menuItems = listOf(
-        SisMenuItem("Kasir POS", "Buka Mesin Kasir & Transaksi", Icons.Default.PointOfSale, RetailRedPrimary, PosNavDestination.KASIR, "menu_kasir"),
-        SisMenuItem("Produk & Harga", "Master Barang, Repack & Promo", Icons.Default.Inventory2, RetailNavy, PosNavDestination.PRODUK, "menu_produk"),
-        SisMenuItem("Cetak Label Rak", "Label Harga A4/F4 & Rak", Icons.Default.QrCode2, Color(0xFF00897B), PosNavDestination.CETAK_LABEL_HARGA, "menu_cetak_label"),
-        SisMenuItem("Riwayat Penjualan", "${allTransactions.size} Transaksi Tersimpan", Icons.Default.ReceiptLong, Color(0xFF1E88E5), PosNavDestination.PENJUALAN, "menu_penjualan"),
-        SisMenuItem("Pembelian Barang", "Input Pembelian dari Supplier", Icons.Default.ShoppingBag, Color(0xFFFB8C00), PosNavDestination.PEMBELIAN, "menu_pembelian"),
-        SisMenuItem("Retur Pembelian", "Pengembalian Barang ke Supplier", Icons.Default.AssignmentReturn, Color(0xFFE53935), PosNavDestination.RETUR_PEMBELIAN, "menu_retur_pembelian"),
-        SisMenuItem("Stok Opname", "Penyesuaian & Koreksi Fisik", Icons.Default.FactCheck, Color(0xFF6D4C41), PosNavDestination.STOK_OPNAME, "menu_stok_opname"),
-        SisMenuItem("Clerek Kasir", "Cek Setoran Kasir & Kas", Icons.Default.AccountBalanceWallet, Color(0xFF43A047), PosNavDestination.CLEREK, "menu_clerek"),
-        SisMenuItem("Laporan Lengkap", "Laporan Kasir, Harian & SIS", Icons.Default.BarChart, Color(0xFF3949AB), PosNavDestination.LAPORAN_TOKO, "menu_laporan"),
-        SisMenuItem("Tutup Toko (EOD)", "End of Day & Rekap Harian", Icons.Default.LockClock, Color(0xFFD81B60), PosNavDestination.EOD_TUTUP_TOKO, "menu_eod"),
-        SisMenuItem("Member & Pelanggan", "Data Pelanggan & Reward", Icons.Default.CardMembership, Color(0xFF00ACC1), PosNavDestination.PENGATURAN_MEMBER, "menu_member"),
-        SisMenuItem("Voucher & Poin", "Kupon Diskon & Poin Belanja", Icons.Default.ConfirmationNumber, Color(0xFF8E24AA), PosNavDestination.VOUCHER_POIN, "menu_voucher"),
-        SisMenuItem("Karyawan & Kasir", "Hak Akses & Petugas Toko", Icons.Default.Badge, Color(0xFF546E7A), PosNavDestination.KARYAWAN, "menu_karyawan"),
-        SisMenuItem("Pengaturan Shift", "Jam Kerja & Shift Kasir", Icons.Default.Schedule, Color(0xFF5E35B1), PosNavDestination.PENGATURAN_SHIFT, "menu_shift"),
-        SisMenuItem("Printer & Struk", "Format Struk & Koneksi Printer", Icons.Default.Print, Color(0xFF7CB342), PosNavDestination.PENGATURAN_PRINTER, "menu_printer"),
-        SisMenuItem("Profil Toko", "Nama, Alamat & Kode Toko", Icons.Default.Storefront, Color(0xFF039BE5), PosNavDestination.EDIT_TOKO, "menu_profil_toko"),
-        SisMenuItem("Backup & Restore", "Cadangkan & Pulihkan Database", Icons.Default.Backup, Color(0xFF455A64), PosNavDestination.BACKUP_RESTORE, "menu_backup")
-    )
+    var showLicenseDialog by remember { mutableStateOf(false) }
+    var inputLicenseKey by remember { mutableStateOf("") }
+    var licenseDialogMessage by remember { mutableStateOf("") }
+    var isLicenseSuccess by remember { mutableStateOf(false) }
+
+    val deviceId = viewModel.deviceId
+
+    // Kembali ke kasir jika tombol back sistem ditekan
+    BackHandler {
+        onNavigateTo(PosNavDestination.KASIR)
+    }
+
+    // Menu list: Jika paket PRO aktif, menu sinkronisasi multi-device TIDAK dimunculkan
+    val menuItems = remember(storeConfig.licenseType, storeConfig.isLicensed, allTransactions.size) {
+        val list = mutableListOf(
+            SisMenuItem("Kasir POS", "Buka Mesin Kasir & Transaksi", Icons.Default.PointOfSale, RetailRedPrimary, PosNavDestination.KASIR, "menu_kasir"),
+            SisMenuItem("Produk & Harga", "Master Barang, Repack & Promo", Icons.Default.Inventory2, RetailNavy, PosNavDestination.PRODUK, "menu_produk"),
+            SisMenuItem("Cetak Label Rak", "Label Harga A4/F4 & Rak", Icons.Default.QrCode2, Color(0xFF00897B), PosNavDestination.CETAK_LABEL_HARGA, "menu_cetak_label"),
+            SisMenuItem("Riwayat Penjualan", "${allTransactions.size} Transaksi Tersimpan", Icons.Default.ReceiptLong, Color(0xFF1E88E5), PosNavDestination.PENJUALAN, "menu_penjualan"),
+            SisMenuItem("Pembelian Barang", "Input Pembelian dari Supplier", Icons.Default.ShoppingBag, Color(0xFFFB8C00), PosNavDestination.PEMBELIAN, "menu_pembelian"),
+            SisMenuItem("Retur Pembelian", "Pengembalian Barang ke Supplier", Icons.Default.AssignmentReturn, Color(0xFFE53935), PosNavDestination.RETUR_PEMBELIAN, "menu_retur_pembelian"),
+            SisMenuItem("Stok Opname", "Penyesuaian & Koreksi Fisik", Icons.Default.FactCheck, Color(0xFF6D4C41), PosNavDestination.STOK_OPNAME, "menu_stok_opname"),
+            SisMenuItem("Clerek Kasir", "Cek Setoran Kasir & Kas", Icons.Default.AccountBalanceWallet, Color(0xFF43A047), PosNavDestination.CLEREK, "menu_clerek"),
+            SisMenuItem("Laporan Lengkap", "Laporan Kasir, Harian & SIS", Icons.Default.BarChart, Color(0xFF3949AB), PosNavDestination.LAPORAN_TOKO, "menu_laporan"),
+            SisMenuItem("Tutup Toko (EOD)", "End of Day & Rekap Harian", Icons.Default.LockClock, Color(0xFFD81B60), PosNavDestination.EOD_TUTUP_TOKO, "menu_eod"),
+            SisMenuItem("Member & Pelanggan", "Data Pelanggan & Reward", Icons.Default.CardMembership, Color(0xFF00ACC1), PosNavDestination.PENGATURAN_MEMBER, "menu_member"),
+            SisMenuItem("Voucher & Poin", "Kupon Diskon & Poin Belanja", Icons.Default.ConfirmationNumber, Color(0xFF8E24AA), PosNavDestination.VOUCHER_POIN, "menu_voucher"),
+            SisMenuItem("Karyawan & Kasir", "Hak Akses & Petugas Toko", Icons.Default.Badge, Color(0xFF546E7A), PosNavDestination.KARYAWAN, "menu_karyawan"),
+            SisMenuItem("Pengaturan Shift", "Jam Kerja & Shift Kasir", Icons.Default.Schedule, Color(0xFF5E35B1), PosNavDestination.PENGATURAN_SHIFT, "menu_shift"),
+            SisMenuItem("Printer & Struk", "Format Struk & Koneksi Printer", Icons.Default.Print, Color(0xFF7CB342), PosNavDestination.PENGATURAN_PRINTER, "menu_printer"),
+            SisMenuItem("Profil Toko", "Nama, Alamat & Kode Toko", Icons.Default.Storefront, Color(0xFF039BE5), PosNavDestination.EDIT_TOKO, "menu_profil_toko"),
+            SisMenuItem("Backup & Restore", "Cadangkan & Pulihkan Database", Icons.Default.Backup, Color(0xFF455A64), PosNavDestination.BACKUP_RESTORE, "menu_backup")
+        )
+
+        // SINKRONISASI MULTI-DEVICE:
+        // Muncul pada mode TRIAL atau ENTERPRISE.
+        // Jika paket PRO diaktifkan, menu ini TIDAK AKAN MUNCUL karena paket PRO khusus single-device mode.
+        if (!storeConfig.isPro) {
+            list.add(
+                SisMenuItem("Sinkron Multi-Device", "Server Master & Kasir Klien Real-Time", Icons.Default.SyncAlt, Color(0xFF00897B), PosNavDestination.SINKRONISASI_MULTI_DEVICE, "menu_sinkronisasi")
+            )
+        }
+        list
+    }
 
     Scaffold(
         topBar = {
@@ -72,15 +106,83 @@ fun SisDashboardScreen(
                     }
                 },
                 actions = {
-                    Button(
-                        onClick = { onNavigateTo(PosNavDestination.KASIR) },
-                        colors = ButtonDefaults.buttonColors(containerColor = RetailRedPrimary),
-                        shape = RoundedCornerShape(6.dp),
-                        modifier = Modifier.padding(end = 8.dp).testTag("btn_back_to_pos")
+                    // Badge ID Device & Status Lisensi (digeser ke kanan rapi & profesional, tanpa shortcut kasir di sampingnya)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = when {
+                            storeConfig.isEnterprise -> Color(0xFF0F5132) // Emerald Green Elegan Enterprise
+                            storeConfig.isPro -> Color(0xFF0D47A1)        // Royal Blue Modern Pro
+                            else -> Color(0xFF881337)                     // Deep Burgundy Crimson Trial
+                        },
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            when {
+                                storeConfig.isEnterprise -> Color(0xFFFFD54F)
+                                storeConfig.isPro -> Color(0xFF90CAF9)
+                                else -> Color(0xFFFCA5A5)
+                            }
+                        ),
+                        modifier = Modifier
+                            .padding(end = 12.dp)
+                            .clickable {
+                                inputLicenseKey = storeConfig.licenseKey
+                                licenseDialogMessage = ""
+                                showLicenseDialog = true
+                            }
+                            .testTag("btn_device_license_status")
                     ) {
-                        Icon(Icons.Default.PointOfSale, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("KASIR (F10)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                when {
+                                    storeConfig.isEnterprise -> Icons.Default.WorkspacePremium
+                                    storeConfig.isPro -> Icons.Default.Verified
+                                    else -> Icons.Default.HourglassTop
+                                },
+                                contentDescription = "Status Lisensi",
+                                tint = when {
+                                    storeConfig.isEnterprise -> Color(0xFFFFD54F)
+                                    storeConfig.isPro -> Color(0xFFBBDEFB)
+                                    else -> Color(0xFFFFEBEE)
+                                },
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        "ID: $deviceId",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = Color.White,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        Icons.Default.Edit,
+                                        contentDescription = "Ubah Lisensi",
+                                        tint = Color.White.copy(alpha = 0.75f),
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                }
+                                Text(
+                                    when {
+                                        storeConfig.isEnterprise -> "ENTERPRISE LIFETIME"
+                                        storeConfig.isPro -> "PRO LIFETIME"
+                                        else -> "TRIAL (${allTransactions.size}/50 Tx)"
+                                    },
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = when {
+                                        storeConfig.isEnterprise -> Color(0xFFFFF59D)
+                                        storeConfig.isPro -> Color(0xFFBBDEFB)
+                                        else -> Color(0xFFFFCDD2)
+                                    }
+                                )
+                            }
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -136,5 +238,174 @@ fun SisDashboardScreen(
                 }
             }
         }
+    }
+
+    // DIALOG PENGATURAN & AKTIVASI LISENSI
+    if (showLicenseDialog) {
+        AlertDialog(
+            onDismissRequest = { showLicenseDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Key, contentDescription = null, tint = RetailNavy)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("AKTIVASI & LISENSI APLIKASI", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column {
+                    // Box Informasi ID Device Perangkat Ini
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text("ID DEVICE PERANGKAT INI:", fontSize = 10.sp, color = GrayText, fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    deviceId,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = RetailNavy
+                                )
+                                OutlinedButton(
+                                    onClick = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("Device ID", deviceId))
+                                        Toast.makeText(context, "ID Device disalin ke clipboard!", Toast.LENGTH_SHORT).show()
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(12.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Salin ID", fontSize = 10.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Status Lisensi Saat Ini
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Status Lisensi:", fontSize = 11.sp, color = DarkText)
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = when {
+                                storeConfig.isEnterprise -> Color(0xFFE8F5E9)
+                                storeConfig.isPro -> Color(0xFFE3F2FD)
+                                else -> Color(0xFFFFEBEE)
+                            }
+                        ) {
+                            Text(
+                                when {
+                                    storeConfig.isEnterprise -> "ENTERPRISE LIFETIME"
+                                    storeConfig.isPro -> "PRO LIFETIME"
+                                    else -> "TRIAL (${allTransactions.size}/50 Transaksi)"
+                                },
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = when {
+                                    storeConfig.isEnterprise -> Color(0xFF2E7D32)
+                                    storeConfig.isPro -> Color(0xFF1565C0)
+                                    else -> Color(0xFFC62828)
+                                },
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Informasi Paket
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = RetailBlueLight,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text("PILIHAN PAKET LISENSI:", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = RetailNavy)
+                            Text("• TRIAL: Kuota maksimal 50 transaksi pertama untuk uji coba fitur.", fontSize = 10.sp, color = DarkText)
+                            Text("• PRO LIFETIME: Transaksi tanpa batas untuk kasir single-device offline.", fontSize = 10.sp, color = DarkText)
+                            Text("• ENTERPRISE: Transaksi tanpa batas & Sinkronisasi real-time multi-device.", fontSize = 10.sp, color = DarkText)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedTextField(
+                        value = inputLicenseKey,
+                        onValueChange = { inputLicenseKey = it.uppercase() },
+                        label = { Text("Masukkan Kode Lisensi") },
+                        placeholder = { Text("PRO-... atau ENT-...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("input_license_key")
+                    )
+
+                    if (licenseDialogMessage.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            licenseDialogMessage,
+                            color = if (isLicenseSuccess) RetailGreen else RetailRedPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (inputLicenseKey.isBlank()) {
+                            licenseDialogMessage = "Masukkan kode lisensi terlebih dahulu."
+                            isLicenseSuccess = false
+                            return@Button
+                        }
+                        viewModel.activateOrUpgradeLicense(inputLicenseKey) { ok, msg ->
+                            isLicenseSuccess = ok
+                            licenseDialogMessage = msg
+                            if (ok) {
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RetailGreen)
+                ) {
+                    Text("AKTIFKAN LISENSI")
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Tombol Reset ke Trial (untuk pengujian atau mengganti paket)
+                    if (storeConfig.isLicensed) {
+                        TextButton(
+                            onClick = {
+                                viewModel.resetLicenseToTrial {
+                                    inputLicenseKey = ""
+                                    isLicenseSuccess = true
+                                    licenseDialogMessage = "Status lisensi direset kembali ke TRIAL."
+                                }
+                            }
+                        ) {
+                            Text("RESET TRIAL", color = RetailRedPrimary, fontSize = 11.sp)
+                        }
+                    }
+                    OutlinedButton(onClick = { showLicenseDialog = false }) {
+                        Text("TUTUP")
+                    }
+                }
+            }
+        )
     }
 }

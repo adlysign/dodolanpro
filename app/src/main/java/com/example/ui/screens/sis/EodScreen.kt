@@ -67,11 +67,32 @@ fun EodScreen(
     val hasClerekDone = remember(allClerek) { allClerek.isNotEmpty() }
     val isShiftClosed = !isShiftOpen
 
+    // Multi-Device & Kasir Pending Check
+    val syncConfig by viewModel.syncConfig.collectAsState()
+    val syncStatus by viewModel.syncStatus.collectAsState()
+    var eodPendingCheck by remember { mutableStateOf<com.example.data.sync.EodPendingCheckResult?>(null) }
+    var isCheckingPending by remember { mutableStateOf(false) }
+
+    fun refreshPendingCheck() {
+        isCheckingPending = true
+        viewModel.checkMultiDeviceEodPending { res ->
+            isCheckingPending = false
+            eodPendingCheck = res
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        refreshPendingCheck()
+    }
+
+    val hasPendingAcrossDevices = eodPendingCheck?.canProceed == false
+
     // Syarat utama EOD:
     // 1. Shift kasir sudah pernah dibuka dan sekarang sudah ditutup/selesai (isShiftClosed)
     // 2. Sudah dilakukan proses clerek kasir (hasClerekDone)
     // 3. Tidak ada transaksi yang belum di-clerek (unclerekCount == 0)
-    val canRunEod = isShiftClosed && hasClerekDone && unclerekCount == 0
+    // 4. Semua kasir aktif & perangkat multi-device telah menyelesaikan keranjang pending (!hasPendingAcrossDevices)
+    val canRunEod = isShiftClosed && hasClerekDone && unclerekCount == 0 && !hasPendingAcrossDevices
 
     Scaffold(
         topBar = {
@@ -189,13 +210,117 @@ fun EodScreen(
                             color = Color(0xFF1E293B)
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Status 4: Validasi Multi-Perangkat & Pending Item Kasir
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (!hasPendingAcrossDevices) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                            contentDescription = null,
+                            tint = if (!hasPendingAcrossDevices) RetailGreen else Color(0xFFC62828),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            if (!hasPendingAcrossDevices)
+                                "Semua kasir aktif telah menyelesaikan transaksi pending (0 Pending)"
+                            else
+                                "EOD Ditolak: ${eodPendingCheck?.message ?: "Ada transaksi pending yang belum selesai"}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (!hasPendingAcrossDevices) RetailGreen else Color(0xFFC62828)
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Warning jika belum memenuhi syarat
-            if (!canRunEod && !eodFinished) {
+            // Warning jika terdapat Pending Items di Kasir Aktif
+            if (hasPendingAcrossDevices && !eodFinished) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, RetailRedPrimary)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Error, contentDescription = null, tint = RetailRedPrimary, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "EOD DITOLAK: MASIH ADA KERANJANG PENDING!",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = RetailRedPrimary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            "Tutup Toko (EOD) belum bisa dilakukan. Semua kasir aktif wajib menyelesaikan seluruh transaksi pending miliknya sebelum EOD:",
+                            fontSize = 11.sp,
+                            color = DarkText
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        eodPendingCheck?.devicesWithPending?.forEach { dev ->
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color.White,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, RetailRedPrimary.copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(dev.deviceName, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.Black)
+                                        Text("Kasir: ${dev.cashierName} (NIK: ${dev.cashierNik})", fontSize = 10.sp, color = GrayText)
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = RetailRedPrimary
+                                    ) {
+                                        Text(
+                                            "${dev.pendingCount} Pending",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 10.sp,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { refreshPendingCheck() },
+                                modifier = Modifier.weight(1f).height(36.dp)
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Cek Ulang Status", fontSize = 11.sp)
+                            }
+
+                            Button(
+                                onClick = { viewModel.navigateTo(PosNavDestination.KASIR) },
+                                colors = ButtonDefaults.buttonColors(containerColor = RetailRedPrimary),
+                                modifier = Modifier.weight(1f).height(36.dp)
+                            ) {
+                                Text("Buka Kasir", fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Warning jika belum memenuhi syarat lain
+            if (!canRunEod && !hasPendingAcrossDevices && !eodFinished) {
                 Surface(
                     color = Color(0xFFFFFBEB),
                     shape = RoundedCornerShape(8.dp),

@@ -1,5 +1,9 @@
 package com.example.ui.screens.pos
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,6 +29,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -80,12 +85,19 @@ fun PosScreen(
     val shiftModalAwal by viewModel.shiftModalAwal.collectAsState()
     val isScreenLocked by viewModel.isScreenLocked.collectAsState()
     val allShiftConfigs by viewModel.allShiftConfigs.collectAsState()
+    val allTransactions by viewModel.allTransactions.collectAsState()
+
+    val context = LocalContext.current
+    val isTrialLimited = storeConfig.isTrial && allTransactions.size >= 50
 
     // Dialog states
     var showLovDialog by remember { mutableStateOf(false) }
     var showPendingLabelDialog by remember { mutableStateOf(false) }
     var showRecallDialog by remember { mutableStateOf(false) }
     var showPaymentDialog by remember { mutableStateOf(false) }
+    var showTrialLimitDialog by remember { mutableStateOf(false) }
+    var trialLicenseInput by remember { mutableStateOf("") }
+    var trialLicenseError by remember { mutableStateOf("") }
     var showVoidDialog by remember { mutableStateOf(false) }
     var showReturDialog by remember { mutableStateOf(false) }
     var showMemberDialog by remember { mutableStateOf(false) }
@@ -137,6 +149,8 @@ fun PosScreen(
                         showBukaShiftDialog = true
                     } else if (cartItems.isEmpty()) {
                         feedbackMessage = "Keranjang belanja masih kosong!"
+                    } else if (isTrialLimited) {
+                        showTrialLimitDialog = true
                     } else {
                         val validity = viewModel.isReturValidForCheckout()
                         if (!validity.first) feedbackMessage = validity.second
@@ -149,6 +163,7 @@ fun PosScreen(
                     showRecallDialog = false
                     showPendingLabelDialog = false
                     showPaymentDialog = false
+                    showTrialLimitDialog = false
                     showVoidDialog = false
                     showReturDialog = false
                     showKeyboardShortcutsHelp = false
@@ -244,18 +259,55 @@ fun PosScreen(
                     Column(
                         modifier = Modifier.weight(1f, fill = false).padding(end = 8.dp)
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = Color.White,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(bottom = 2.dp)
                         ) {
-                            Text(
-                                "DodolanPro",
-                                fontWeight = FontWeight.Black,
-                                color = Color.Black, // Warna teks hitam jika background putih
-                                fontSize = 13.sp,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color.White
+                            ) {
+                                Text(
+                                    "DodolanPro",
+                                    fontWeight = FontWeight.Black,
+                                    color = Color.Black,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            if (storeConfig.isTrial) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = if (allTransactions.size >= 50) Color(0xFFB71C1C) else Color(0xFFD97706),
+                                    border = BorderStroke(1.dp, if (allTransactions.size >= 50) Color(0xFFFFCDD2) else Color(0xFFFFE082)),
+                                    modifier = Modifier
+                                        .padding(start = 6.dp)
+                                        .clickable {
+                                            trialLicenseInput = storeConfig.licenseKey
+                                            trialLicenseError = ""
+                                            showTrialLimitDialog = true
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            if (allTransactions.size >= 50) Icons.Default.Lock else Icons.Default.HourglassTop,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(10.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            if (allTransactions.size >= 50) "TRIAL HABIS (50/50)" else "TRIAL (${allTransactions.size}/50)",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.sp
+                                        )
+                                    }
+                                }
+                            }
                         }
                         Text(
                             "${storeConfig.storeName} (${storeConfig.storeCode})",
@@ -427,6 +479,8 @@ fun PosScreen(
                                     if (!isShiftOpen) {
                                         feedbackMessage = "Shift belum dibuka! Harap buka shift kasir terlebih dahulu."
                                         showBukaShiftDialog = true
+                                    } else if (isTrialLimited) {
+                                        showTrialLimitDialog = true
                                     } else {
                                         val validity = viewModel.isReturValidForCheckout()
                                         if (!validity.first) feedbackMessage = validity.second
@@ -648,6 +702,8 @@ fun PosScreen(
                                     showBukaShiftDialog = true
                                 } else if (cartItems.isEmpty()) {
                                     feedbackMessage = "Keranjang belanja masih kosong!"
+                                } else if (isTrialLimited) {
+                                    showTrialLimitDialog = true
                                 } else {
                                     val validity = viewModel.isReturValidForCheckout()
                                     if (!validity.first) {
@@ -667,7 +723,11 @@ fun PosScreen(
                                     }
                                     barcodeText = ""
                                 } else if (cartItems.isNotEmpty()) {
-                                    showPaymentDialog = true
+                                    if (isTrialLimited) {
+                                        showTrialLimitDialog = true
+                                    } else {
+                                        showPaymentDialog = true
+                                    }
                                 }
                             }
                         )
@@ -837,6 +897,8 @@ fun PosScreen(
                                 showBukaShiftDialog = true
                             } else if (cartItems.isEmpty()) {
                                 feedbackMessage = "Keranjang belanja kosong!"
+                            } else if (isTrialLimited) {
+                                showTrialLimitDialog = true
                             } else {
                                 val validity = viewModel.isReturValidForCheckout()
                                 if (!validity.first) feedbackMessage = validity.second
@@ -917,6 +979,148 @@ fun PosScreen(
                         showReceiptDialog = tx
                     } else {
                         feedbackMessage = msg
+                    }
+                }
+            }
+        )
+    }
+
+    if (showTrialLimitDialog) {
+        AlertDialog(
+            onDismissRequest = { showTrialLimitDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFFFEBEE),
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = Color(0xFFC62828),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("Batas 50 Transaksi Trial", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFFB71C1C))
+                        Text("Masa Percobaan Selesai", fontSize = 11.sp, color = GrayText)
+                    }
+                }
+            },
+            text = {
+                Column {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                        border = BorderStroke(1.dp, PosCardBorder)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text("ID DEVICE PERANGKAT INI:", fontSize = 10.sp, color = GrayText, fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    viewModel.deviceId,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = RetailNavy
+                                )
+                                OutlinedButton(
+                                    onClick = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("Device ID", viewModel.deviceId))
+                                        Toast.makeText(context, "ID Device disalin ke clipboard!", Toast.LENGTH_SHORT).show()
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(12.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Salin ID", fontSize = 10.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        "Aplikasi DodolanPro Anda berada dalam mode TRIAL dengan batas 50 transaksi. Transaksi saat ini telah mencapai kuota: ${allTransactions.size} / 50 transaksi.",
+                        fontSize = 12.sp,
+                        color = DarkText,
+                        lineHeight = 16.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Untuk melanjutkan transaksi pelanggan tanpa batas, silakan masukkan lisensi PRO LIFETIME atau ENTERPRISE:",
+                        fontSize = 11.sp,
+                        color = GrayText
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedTextField(
+                        value = trialLicenseInput,
+                        onValueChange = { trialLicenseInput = it.uppercase() },
+                        label = { Text("Kode Lisensi") },
+                        placeholder = { Text("PRO-... atau ENT-...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("input_trial_license_key")
+                    )
+
+                    if (trialLicenseError.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            trialLicenseError,
+                            color = RetailRedPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (trialLicenseInput.isBlank()) {
+                            trialLicenseError = "Masukkan kode lisensi terlebih dahulu."
+                            return@Button
+                        }
+                        viewModel.activateOrUpgradeLicense(trialLicenseInput) { ok, msg ->
+                            if (ok) {
+                                showTrialLimitDialog = false
+                                trialLicenseError = ""
+                                trialLicenseInput = ""
+                                feedbackMessage = msg
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            } else {
+                                trialLicenseError = msg
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RetailGreen)
+                ) {
+                    Text("AKTIFKAN LISENSI")
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = {
+                        showTrialLimitDialog = false
+                        onNavigateTo(PosNavDestination.SIS_DASHBOARD)
+                    }) {
+                        Text("MENU SIS", color = RetailNavy, fontSize = 12.sp)
+                    }
+                    OutlinedButton(onClick = { showTrialLimitDialog = false }) {
+                        Text("TUTUP", fontSize = 12.sp)
                     }
                 }
             }
