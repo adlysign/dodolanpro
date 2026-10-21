@@ -32,6 +32,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.TextStyle
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StockOpnameScreen(
@@ -82,6 +86,16 @@ fun StockOpnameScreen(
         productsInFilter.count { (physicalCounts[it.plu] ?: it.stok) != it.stok }
     }
 
+    val totalFisikInFilter = remember(productsInFilter, physicalCounts.toMap()) {
+        productsInFilter.sumOf { physicalCounts[it.plu] ?: it.stok }
+    }
+
+    val totalSistemInFilter = remember(productsInFilter) {
+        productsInFilter.sumOf { it.stok }
+    }
+
+    val totalSelisihQty = totalFisikInFilter - totalSistemInFilter
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -119,7 +133,7 @@ fun StockOpnameScreen(
                         border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
-                            Text("1. Pilih Cakupan Stok Opname:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
+                            Text("1. Cakupan Rak / Planogram:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
                             Spacer(modifier = Modifier.height(4.dp))
                             ScrollableTabRow(
                                 selectedTabIndex = racks.indexOf(selectedRakFilter).coerceAtLeast(0),
@@ -139,7 +153,44 @@ fun StockOpnameScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Buttons: "Cek Selisih" (hanya tampilkan yang beda) vs "Tampilkan Semua"
+                    // Ringkasan KPI Jumlah Fisik & Sistem
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("TOTAL SISTEM", fontSize = 9.5.sp, color = GrayText, fontWeight = FontWeight.SemiBold)
+                                Text("$totalSistemInFilter pcs", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                            }
+                            Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color(0xFFE0E0E0)))
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("JUMLAH FISIK", fontSize = 9.5.sp, color = RetailNavy, fontWeight = FontWeight.Bold)
+                                Text("$totalFisikInFilter pcs", fontSize = 14.sp, fontWeight = FontWeight.Black, color = RetailNavy)
+                            }
+                            Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color(0xFFE0E0E0)))
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("SELISIH FISIK", fontSize = 9.5.sp, color = if (totalSelisihQty == 0) RetailGreen else RetailRedPrimary, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (totalSelisihQty > 0) "+$totalSelisihQty pcs" else "$totalSelisihQty pcs",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (totalSelisihQty == 0) RetailGreen else RetailRedPrimary
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Buttons: "Cek Selisih" vs "Tampilkan Semua"
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -178,13 +229,13 @@ fun StockOpnameScreen(
                     ) {
                         Column(modifier = Modifier.fillMaxSize()) {
                             Row(
-                                modifier = Modifier.fillMaxWidth().background(PosSurfaceVariant).padding(8.dp),
+                                modifier = Modifier.fillMaxWidth().background(PosSurfaceVariant).padding(horizontal = 8.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("PRODUK / RAK", modifier = Modifier.weight(3f), fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.Black)
-                                Text("SISTEM", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center, color = Color.Black)
-                                Text("FISIK", modifier = Modifier.weight(1.5f), fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center, color = Color.Black)
-                                Text("SELISIH", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.End, color = Color.Black)
+                                Text("PRODUK / RAK", modifier = Modifier.weight(2.6f), fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.Black)
+                                Text("SISTEM", modifier = Modifier.weight(1.0f), fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center, color = Color.Black)
+                                Text("JUMLAH FISIK", modifier = Modifier.weight(2.2f), fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center, color = Color.Black)
+                                Text("SELISIH", modifier = Modifier.weight(1.2f), fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.End, color = Color.Black)
                             }
 
                             if (displayedProducts.isEmpty()) {
@@ -209,30 +260,113 @@ fun StockOpnameScreen(
                                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Column(modifier = Modifier.weight(3f)) {
+                                            Column(modifier = Modifier.weight(2.6f)) {
                                                 Text(prod.nama, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
                                                 Text("PLU: ${prod.plu} | ${prod.rakPlanogram}", fontSize = 10.sp, color = GrayText)
                                             }
 
-                                            Text("${prod.stok}", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.Black)
-
-                                            // Count Input
-                                            var textVal by remember(physical) { mutableStateOf(physical.toString()) }
-                                            OutlinedTextField(
-                                                value = textVal,
-                                                onValueChange = {
-                                                    textVal = it
-                                                    val parsed = it.toIntOrNull() ?: 0
-                                                    physicalCounts[prod.plu] = parsed
-                                                },
-                                                modifier = Modifier.weight(1.5f).height(44.dp),
-                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                                textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                "${prod.stok}",
+                                                modifier = Modifier.weight(1.0f),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                textAlign = TextAlign.Center,
+                                                color = Color.Black
                                             )
+
+                                            // Count Input & Stepper (Tampil Sempurna, Jelas, & Tidak Terpotong)
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = Color(0xFFF8FAFC),
+                                                border = androidx.compose.foundation.BorderStroke(
+                                                    1.dp,
+                                                    if (selisih != 0) Color(0xFFFF9800) else Color(0xFFCFD8DC)
+                                                ),
+                                                modifier = Modifier
+                                                    .weight(2.2f)
+                                                    .height(38.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    // Tombol Minus [-]
+                                                    Surface(
+                                                        shape = RoundedCornerShape(topStart = 5.dp, bottomStart = 5.dp),
+                                                        color = Color(0xFFECEFF1),
+                                                        modifier = Modifier
+                                                            .width(26.dp)
+                                                            .fillMaxHeight()
+                                                            .clickable {
+                                                                val curr = physicalCounts[prod.plu] ?: prod.stok
+                                                                if (curr > 0) physicalCounts[prod.plu] = curr - 1
+                                                            }
+                                                    ) {
+                                                        Box(contentAlignment = Alignment.Center) {
+                                                            Icon(
+                                                                Icons.Default.Remove,
+                                                                contentDescription = "Kurang Fisik",
+                                                                modifier = Modifier.size(13.dp),
+                                                                tint = Color.Black
+                                                            )
+                                                        }
+                                                    }
+
+                                                    // Input Angka Langsung (BasicTextField, tidak terpotong)
+                                                    var textInput by remember(physical) { mutableStateOf(physical.toString()) }
+                                                    BasicTextField(
+                                                        value = textInput,
+                                                        onValueChange = { newStr ->
+                                                            val clean = newStr.filter { it.isDigit() }
+                                                            textInput = clean
+                                                            if (clean.isNotEmpty()) {
+                                                                val num = clean.toIntOrNull() ?: 0
+                                                                physicalCounts[prod.plu] = num
+                                                            } else {
+                                                                physicalCounts[prod.plu] = 0
+                                                            }
+                                                        },
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .padding(horizontal = 2.dp),
+                                                        singleLine = true,
+                                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                        textStyle = TextStyle(
+                                                            textAlign = TextAlign.Center,
+                                                            fontSize = 13.sp,
+                                                            fontWeight = FontWeight.Black,
+                                                            color = if (selisih != 0) Color(0xFFE65100) else Color.Black
+                                                        )
+                                                    )
+
+                                                    // Tombol Plus [+]
+                                                    Surface(
+                                                        shape = RoundedCornerShape(topEnd = 5.dp, bottomEnd = 5.dp),
+                                                        color = RetailNavy,
+                                                        modifier = Modifier
+                                                            .width(26.dp)
+                                                            .fillMaxHeight()
+                                                            .clickable {
+                                                                val curr = physicalCounts[prod.plu] ?: prod.stok
+                                                                physicalCounts[prod.plu] = curr + 1
+                                                            }
+                                                    ) {
+                                                        Box(contentAlignment = Alignment.Center) {
+                                                            Icon(
+                                                                Icons.Default.Add,
+                                                                contentDescription = "Tambah Fisik",
+                                                                modifier = Modifier.size(13.dp),
+                                                                tint = Color.White
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
 
                                             Text(
                                                 if (selisih > 0) "+$selisih" else "$selisih",
-                                                modifier = Modifier.weight(1f),
+                                                modifier = Modifier.weight(1.2f),
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 textAlign = TextAlign.End,
@@ -303,8 +437,13 @@ fun StockOpnameScreen(
                                     }
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text("Cakupan: ${so.rakFilter} | Petugas: ${so.petugasNama}", fontSize = 12.sp, color = Color.Black)
+                                    if (so.keterangan.isNotEmpty()) {
+                                        Text(so.keterangan, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = RetailNavy)
+                                    } else if (so.totalSelisihFisik > 0) {
+                                        Text("Jumlah Fisik: ${so.totalSelisihFisik} pcs", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = RetailNavy)
+                                    }
                                     Text(
-                                        "Item Dihitung: ${so.totalItemDihitung} | Selisih: ${so.totalSelisihItem} item (${formatRupiah(so.totalSelisihNilai)})",
+                                        "SKU: ${so.totalItemDihitung} | Selisih: ${so.totalSelisihItem} item (${formatRupiah(so.totalSelisihNilai)})",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
                                         color = if (so.totalSelisihItem == 0) RetailGreen else Color.Black
@@ -344,8 +483,14 @@ fun StockOpnameScreen(
             appendLine("Cakupan  : ${so.rakFilter}")
             appendLine("Petugas  : ${so.petugasNama}")
             appendLine("----------------------------------------")
-            appendLine("Total Item Dihitung: ${so.totalItemDihitung}")
-            appendLine("Total Selisih Item : ${so.totalSelisihItem}")
+            appendLine("Total SKU Dihitung : ${so.totalItemDihitung} SKU")
+            if (so.totalSelisihFisik > 0) {
+                appendLine("Total Jumlah Fisik : ${so.totalSelisihFisik} pcs")
+            }
+            if (so.keterangan.isNotEmpty()) {
+                appendLine("Detail Fisik/Sistem: ${so.keterangan}")
+            }
+            appendLine("Total Selisih Item : ${so.totalSelisihItem} pcs")
             appendLine("Total Nilai Selisih: ${formatRupiah(so.totalSelisihNilai)}")
             appendLine("----------------------------------------")
             appendLine("Status: STOK FISIK TELAH DISINKRONKAN")

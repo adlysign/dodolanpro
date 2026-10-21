@@ -1250,9 +1250,11 @@ fun ReceiptDialog(
 fun VoidItemDialog(
     item: CartItem,
     onDismiss: () -> Unit,
-    onConfirmVoid: (otp: String, reason: String) -> Unit
+    onConfirmVoid: (otp: String, reason: String, onError: (String) -> Unit) -> Unit
 ) {
     var otpCode by remember { mutableStateOf("") }
+    var isPasswordVisible by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
     var reason by remember { mutableStateOf("Konsumen Batal") }
     val reasons = listOf("Konsumen Batal", "Salah Input Qty", "Dobel Barcode Scan", "Barang Rusak")
 
@@ -1277,14 +1279,14 @@ fun VoidItemDialog(
                         .background(RetailRedPrimary, RoundedCornerShape(6.dp))
                         .padding(10.dp)
                 ) {
-                    Text("OTP VOID TRANSAKSI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("OTORISASI VOID ITEM KERANJANG", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text("Batalkan item berikut:", fontSize = 12.sp, color = Color.Black)
                 Text(item.product.nama, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Black)
-                Text("Qty: ${item.qty} | Subtotal: ${formatRupiah(item.subtotal)}", fontSize = 12.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                Text("Qty: ${item.qty} ${item.product.satuan} | Subtotal: ${formatRupiah(item.subtotal)}", fontSize = 12.sp, color = Color.Black, fontWeight = FontWeight.Bold)
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -1302,20 +1304,47 @@ fun VoidItemDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Text("Masukkan Kode OTP / Otorisasi Supervisor:", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color.Black)
+                Text("PIN / Password Otorisasi (Supervisor / Owner / Admin):", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color.Black)
                 OutlinedTextField(
                     value = otpCode,
-                    onValueChange = { otpCode = it },
+                    onValueChange = {
+                        otpCode = it
+                        if (errorMessage.isNotEmpty()) errorMessage = ""
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Contoh: 123456") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    placeholder = { Text("Masukkan PIN otorisasi...") },
+                    visualTransformation = if (isPasswordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     trailingIcon = {
-                        TextButton(onClick = { otpCode = (100000..999999).random().toString() }) {
-                            Text("Bypass OTP", fontSize = 11.sp, color = RetailNavy)
+                        IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                            Icon(
+                                if (isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = if (isPasswordVisible) "Sembunyikan" else "Tampilkan",
+                                tint = Color.Gray
+                            )
                         }
                     },
                     singleLine = true
                 )
+
+                if (errorMessage.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        color = Color(0xFFFFEBEE),
+                        shape = RoundedCornerShape(4.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFCDD2)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = RetailRedPrimary, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(errorMessage, color = RetailRedPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
@@ -1324,12 +1353,16 @@ fun VoidItemDialog(
                         Text("BATAL")
                     }
                     Button(
-                        onClick = { onConfirmVoid(otpCode, reason) },
-                        enabled = otpCode.length >= 4,
+                        onClick = {
+                            onConfirmVoid(otpCode, reason) { err ->
+                                errorMessage = err
+                            }
+                        },
+                        enabled = otpCode.isNotBlank(),
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = RetailRedPrimary, contentColor = Color.White)
                     ) {
-                        Text("PROSES", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("PROSES VOID", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }

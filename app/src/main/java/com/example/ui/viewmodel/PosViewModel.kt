@@ -1035,6 +1035,35 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         return if (res != null) Pair(res.first, res.second) else Pair(null, emptyList())
     }
 
+    fun verifyAuthorityPin(
+        pinInput: String,
+        requiredPermission: (CashierUserEntity) -> Boolean = { it.canVoidItem }
+    ): Pair<Boolean, String> {
+        val trimmed = pinInput.trim()
+        if (trimmed.isEmpty()) {
+            return Pair(false, "PIN / Password otorisasi tidak boleh kosong!")
+        }
+        val cashiers = allCashiers.value
+        val authorizedUser = cashiers.find { it.pin.trim() == trimmed && it.statusAktif }
+        if (authorizedUser != null) {
+            if (authorizedUser.isOwner() || authorizedUser.isAdmin()) {
+                return Pair(true, "Otorisasi ${authorizedUser.role} (${authorizedUser.nama}) disetujui")
+            }
+            if (authorizedUser.isSupervisor()) {
+                return Pair(true, "Otorisasi Supervisor (${authorizedUser.nama}) disetujui")
+            }
+            if (requiredPermission(authorizedUser)) {
+                return Pair(true, "Otorisasi ${authorizedUser.nama} disetujui")
+            }
+            return Pair(false, "Akses Ditolak: '${authorizedUser.nama}' tidak memiliki wewenang untuk tindakan ini.")
+        }
+        // Fallback hanya jika default owner 1234 dan ada akun owner dengan PIN 1234
+        if (trimmed == "1234" && (cashiers.isEmpty() || cashiers.any { it.isOwner() && it.pin.trim() == "1234" })) {
+            return Pair(true, "Otorisasi Owner disetujui")
+        }
+        return Pair(false, "PIN / Password otorisasi salah! Anda tidak memiliki wewenang untuk tindakan ini.")
+    }
+
     fun addReturItem(
         bonNo: String,
         product: ProductEntity,
@@ -1043,14 +1072,42 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         otp: String,
         onComplete: (Boolean, String) -> Unit
     ) {
-        val returCartItem = CartItem(
-            product = product,
-            qty = qty,
-            isRetur = true,
-            note = "Retur BON $bonNo ($reason)"
-        )
-        _cartItems.value = _cartItems.value + returCartItem
-        onComplete(true, "Barang retur '${product.nama}' berhasil ditambahkan ke transaksi")
+        viewModelScope.launch {
+            val trimmed = otp.trim()
+            if (trimmed.isEmpty()) {
+                onComplete(false, "PIN otorisasi tidak boleh kosong!")
+                return@launch
+            }
+            val cashiers = try {
+                repository.getAllCashiersList()
+            } catch (e: Exception) {
+                allCashiers.value
+            }
+            val matchingCashier = cashiers.find { it.pin.trim() == trimmed && it.statusAktif }
+            val isAuthorized = when {
+                matchingCashier != null && (matchingCashier.isOwner() || matchingCashier.isAdmin() || matchingCashier.isSupervisor() || matchingCashier.canReturKonsumen) -> {
+                    Pair(true, "Otorisasi ${matchingCashier.nama} disetujui")
+                }
+                trimmed == "1234" && (cashiers.isEmpty() || cashiers.any { it.isOwner() && it.pin.trim() == "1234" }) -> {
+                    Pair(true, "Otorisasi Owner disetujui")
+                }
+                else -> {
+                    Pair(false, "PIN otorisasi salah! Tidak memiliki hak retur konsumen.")
+                }
+            }
+            if (!isAuthorized.first) {
+                onComplete(false, isAuthorized.second)
+                return@launch
+            }
+            val returCartItem = CartItem(
+                product = product,
+                qty = qty,
+                isRetur = true,
+                note = "Retur BON $bonNo ($reason)"
+            )
+            _cartItems.value = _cartItems.value + returCartItem
+            onComplete(true, "Barang retur '${product.nama}' berhasil ditambahkan ke transaksi (${isAuthorized.second})")
+        }
     }
 
     fun voidItem(
@@ -1059,17 +1116,63 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         reason: String,
         onComplete: (Boolean, String) -> Unit
     ) {
-        val currentList = _cartItems.value.toMutableList()
-        if (index in currentList.indices) {
-            val item = currentList[index]
-            currentList[index] = item.copy(
-                isVoid = true,
-                voidReason = reason
-            )
-            _cartItems.value = currentList
-            onComplete(true, "Item '${item.product.nama}' berhasil di-void")
-        } else {
-            onComplete(false, "Item tidak ditemukan")
+        viewModelScope.launch {
+            val trimmed = otp.trim()
+            if (trimmed.isEmpty()) {
+                onComplete(false, "PIN / Password otorisasi tidak boleh kosong!")
+                return@launch
+            }
+
+            // Validasi langsung dengan data kasir di database Room
+            val cashiers = try {
+                repository.getAllCashiersList()
+            } catch (e: Exception) {
+                allCashiers.value
+            }
+
+            // Cari kasir dengan PIN cocok dan berstatus aktif
+            val authorizedStaff = cashiers.find { it.pin.trim() == trimmed && it.statusAktif }
+
+            val authResult: Pair<Boolean, String> = when {
+                authorizedStaff == null -> {
+                    // Cek jika database belum memiliki akun lain dan owner default 1234
+                    if (trimmed == "1234" && (cashiers.isEmpty() || cashiers.any { it.isOwner() && it.pin.trim() == "1234" })) {
+                        Pair(true, "Otorisasi Owner disetujui")
+                    } else {
+                        Pair(false, "PIN / Password otorisasi salah! Anda tidak memiliki wewenang untuk tindakan ini.")
+                    }
+                }
+                authorizedStaff.isOwner() || authorizedStaff.isAdmin() -> {
+                    Pair(true, "Otorisasi ${authorizedStaff.role} (${authorizedStaff.nama}) disetujui")
+                }
+                authorizedStaff.isSupervisor() -> {
+                    Pair(true, "Otorisasi Supervisor (${authorizedStaff.nama}) disetujui")
+                }
+                authorizedStaff.canVoidItem -> {
+                    Pair(true, "Otorisasi Kasir (${authorizedStaff.nama}) disetujui")
+                }
+                else -> {
+                    Pair(false, "Akses Ditolak: Karyawan '${authorizedStaff.nama}' (${authorizedStaff.role}) tidak memiliki izin VOID item.")
+                }
+            }
+
+            if (!authResult.first) {
+                onComplete(false, authResult.second)
+                return@launch
+            }
+
+            val currentList = _cartItems.value.toMutableList()
+            if (index in currentList.indices) {
+                val item = currentList[index]
+                currentList[index] = item.copy(
+                    isVoid = true,
+                    voidReason = reason
+                )
+                _cartItems.value = currentList
+                onComplete(true, "Item '${item.product.nama}' berhasil di-void (${authResult.second})")
+            } else {
+                onComplete(false, "Item tidak ditemukan")
+            }
         }
     }
 
@@ -2066,9 +2169,13 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             var totalSelisihNilai = 0.0
             val allProds = allProducts.value
             val diffs = mutableMapOf<String, Int>()
+            var totalFisikDihitung = 0
+            var totalSistemDihitung = 0
             adjustments.forEach { (plu, count) ->
+                totalFisikDihitung += count
                 val prod = allProds.find { it.plu == plu }
                 if (prod != null) {
+                    totalSistemDihitung += prod.stok
                     val selisih = count - prod.stok
                     totalSelisihItem += selisih
                     totalSelisihNilai += selisih * prod.hargaBeli
@@ -2077,13 +2184,14 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             }
             val so = StockOpnameEntity(
                 soNo = soNo,
-                tanggal = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date()),
+                tanggal = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault()).format(Date()),
                 petugasNama = _currentCashier.value?.nama ?: "Petugas",
                 totalItemDihitung = adjustments.size,
-                totalSelisihFisik = totalSelisihItem,
+                totalSelisihFisik = totalFisikDihitung,
                 rakFilter = rakFilter,
                 totalSelisihItem = totalSelisihItem,
-                totalSelisihNilai = totalSelisihNilai
+                totalSelisihNilai = totalSelisihNilai,
+                keterangan = "Fisik: $totalFisikDihitung pcs | Sistem: $totalSistemDihitung pcs"
             )
             repository.recordStockOpname(so, diffs)
             onDone()

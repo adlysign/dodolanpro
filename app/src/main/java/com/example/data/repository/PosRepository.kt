@@ -50,6 +50,10 @@ class PosRepository(private val dao: PosDao) {
         dao.getCashierByNik(nik)
     }
 
+    suspend fun getAllCashiersList(): List<CashierUserEntity> = withContext(Dispatchers.IO) {
+        dao.getAllCashiersList()
+    }
+
     suspend fun saveCashier(cashier: CashierUserEntity) = withContext(Dispatchers.IO) {
         dao.insertCashier(cashier)
     }

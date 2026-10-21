@@ -174,11 +174,10 @@ fun PosScreen(
                 }
                 PosShortcutEvent.DELETE_ITEM -> {
                     if (selectedCartIndex != null && selectedCartIndex in cartItems.indices) {
-                        val item = cartItems[selectedCartIndex!!]
-                        itemToDelete = Pair(selectedCartIndex!!, item)
+                        showVoidDialog = true
                     } else if (cartItems.isNotEmpty()) {
-                        val lastIdx = cartItems.size - 1
-                        itemToDelete = Pair(lastIdx, cartItems[lastIdx])
+                        selectedCartIndex = cartItems.size - 1
+                        showVoidDialog = true
                     }
                 }
                 PosShortcutEvent.ARROW_UP -> {
@@ -505,8 +504,7 @@ fun PosScreen(
                             }
                             Key.Delete -> {
                                 if (selectedCartIndex != null && selectedCartIndex in cartItems.indices) {
-                                    val item = cartItems[selectedCartIndex!!]
-                                    itemToDelete = Pair(selectedCartIndex!!, item)
+                                    showVoidDialog = true
                                     true
                                 } else false
                             }
@@ -600,12 +598,16 @@ fun PosScreen(
                                                     if (item.qty > 1) {
                                                         viewModel.updateCartItemQty(index, item.qty - 1)
                                                     } else {
-                                                        itemToDelete = Pair(index, item)
+                                                        selectedCartIndex = index
+                                                        showVoidDialog = true
                                                     }
                                                 },
                                                 onEditQtyDirect = { itemToEditQty = Pair(index, item) },
                                                 onChangeSatuan = { itemToChangeSatuan = Pair(index, item) },
-                                                onDeleteItem = { itemToDelete = Pair(index, item) }
+                                                onDeleteItem = {
+                                                    selectedCartIndex = index
+                                                    showVoidDialog = true
+                                                }
                                             )
                                             HorizontalDivider(color = PosCardBorder.copy(alpha = 0.5f))
                                         }
@@ -837,12 +839,16 @@ fun PosScreen(
                                                 if (item.qty > 1) {
                                                     viewModel.updateCartItemQty(index, item.qty - 1)
                                                 } else {
-                                                    itemToDelete = Pair(index, item)
+                                                    selectedCartIndex = index
+                                                    showVoidDialog = true
                                                 }
                                             },
                                             onEditQtyDirect = { itemToEditQty = Pair(index, item) },
                                             onChangeSatuan = { itemToChangeSatuan = Pair(index, item) },
-                                            onDeleteItem = { itemToDelete = Pair(index, item) }
+                                            onDeleteItem = {
+                                                selectedCartIndex = index
+                                                showVoidDialog = true
+                                            }
                                         )
                                         HorizontalDivider(color = PosCardBorder.copy(alpha = 0.5f))
                                     }
@@ -1131,10 +1137,14 @@ fun PosScreen(
         VoidItemDialog(
             item = cartItems[selectedCartIndex!!],
             onDismiss = { showVoidDialog = false },
-            onConfirmVoid = { otp, reason ->
+            onConfirmVoid = { otp, reason, onError ->
                 viewModel.voidItem(selectedCartIndex!!, otp, reason) { ok, msg ->
                     feedbackMessage = msg
-                    if (ok) showVoidDialog = false
+                    if (ok) {
+                        showVoidDialog = false
+                    } else {
+                        onError(msg)
+                    }
                 }
             }
         )
