@@ -240,7 +240,37 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentDestination = MutableStateFlow(PosNavDestination.KASIR)
     val currentDestination: StateFlow<PosNavDestination> = _currentDestination.asStateFlow()
 
+    fun hasPermissionForDestination(dest: PosNavDestination): Boolean {
+        val cashier = _currentCashier.value ?: return false
+        if (cashier.isOwner()) return true
+        return when (dest) {
+            PosNavDestination.KASIR -> true
+            PosNavDestination.SIS_DASHBOARD -> cashier.canAccessSis
+            PosNavDestination.PRODUK -> cashier.canManageProduk
+            PosNavDestination.CETAK_LABEL_HARGA -> cashier.canCetakLabelRak
+            PosNavDestination.PENJUALAN -> cashier.canViewLaporan || cashier.isAdmin() || cashier.isSupervisor()
+            PosNavDestination.PEMBELIAN -> cashier.canManagePembelian
+            PosNavDestination.RETUR_PEMBELIAN -> cashier.canReturPembelian
+            PosNavDestination.STOK_OPNAME -> cashier.canStockOpname
+            PosNavDestination.CLEREK -> cashier.canClerekKasir
+            PosNavDestination.LAPORAN_TOKO -> cashier.canViewLaporan
+            PosNavDestination.EOD_TUTUP_TOKO -> cashier.canEodTutupToko
+            PosNavDestination.PENGATURAN_MEMBER -> cashier.canManageMember
+            PosNavDestination.VOUCHER_POIN -> cashier.canManageVoucher
+            PosNavDestination.KARYAWAN -> cashier.canManageKaryawan
+            PosNavDestination.PENGATURAN_SHIFT -> cashier.canBukaTutupShift || cashier.canManageSettings
+            PosNavDestination.PENGATURAN_PRINTER -> cashier.canManageSettings
+            PosNavDestination.EDIT_TOKO -> cashier.canManageSettings
+            PosNavDestination.BACKUP_RESTORE -> cashier.canBackupRestore
+            PosNavDestination.SINKRONISASI_MULTI_DEVICE -> cashier.canManageSettings
+        }
+    }
+
     fun navigateTo(dest: PosNavDestination) {
+        val cashier = _currentCashier.value
+        if (cashier != null && !cashier.isOwner() && !hasPermissionForDestination(dest)) {
+            return
+        }
         _currentDestination.value = dest
     }
 
@@ -256,21 +286,32 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     val allCashiers: StateFlow<List<CashierUserEntity>> = repository.allCashiers
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Shifts (Tersimpan permanen hingga proses clerek dilakukan)
-    private val _isShiftOpen = MutableStateFlow(shiftPrefs.getBoolean("is_shift_open", false))
+    // Shifts (Tersimpan per kasir hingga proses clerek dilakukan)
+    private val _isShiftOpen = MutableStateFlow(false)
     val isShiftOpen: StateFlow<Boolean> = _isShiftOpen.asStateFlow()
 
-    private val _activeShift = MutableStateFlow(shiftPrefs.getInt("active_shift", 1))
+    private val _activeShift = MutableStateFlow(1)
     val activeShift: StateFlow<Int> = _activeShift.asStateFlow()
 
-    private val _shiftModalAwal = MutableStateFlow(shiftPrefs.getFloat("shift_modal_awal", 100000f).toDouble())
+    private val _shiftModalAwal = MutableStateFlow(100000.0)
     val shiftModalAwal: StateFlow<Double> = _shiftModalAwal.asStateFlow()
 
-    private val _shiftOpenedAt = MutableStateFlow(shiftPrefs.getString("shift_opened_at", "") ?: "")
+    private val _shiftOpenedAt = MutableStateFlow("")
     val shiftOpenedAt: StateFlow<String> = _shiftOpenedAt.asStateFlow()
 
     private val _isScreenLocked = MutableStateFlow(false)
     val isScreenLocked: StateFlow<Boolean> = _isScreenLocked.asStateFlow()
+
+    fun loadShiftForCashier(nik: String) {
+        val isOpen = shiftPrefs.getBoolean("is_shift_open_$nik", false)
+        val shift = shiftPrefs.getInt("active_shift_$nik", 1)
+        val modal = shiftPrefs.getFloat("shift_modal_awal_$nik", 100000f).toDouble()
+        val openedAt = shiftPrefs.getString("shift_opened_at_$nik", "") ?: ""
+        _isShiftOpen.value = isOpen
+        _activeShift.value = shift
+        _shiftModalAwal.value = modal
+        _shiftOpenedAt.value = openedAt
+    }
 
     init {
         viewModelScope.launch {
@@ -287,7 +328,12 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 if (user != null) {
                     _currentCashier.value = user
                     _isUserLoggedIn.value = true
+                    loadShiftForCashier(user.nik)
+                } else {
+                    _isShiftOpen.value = false
                 }
+            } else {
+                _isShiftOpen.value = false
             }
         }
 
@@ -620,8 +666,11 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         return "BON-${sdf.format(Date())}"
     }
 
-    fun addProductToCart(product: ProductEntity, qty: Int = 1, selectedSatuan: String = product.satuan) {
+    fun addProductToCart(product: ProductEntity, qty: Int = 1, selectedSatuan: String = product.satuan): Pair<Boolean, String> {
         val freshProduct = allProducts.value.find { it.plu == product.plu } ?: product
+        if (freshProduct.stok <= 0) {
+            return Pair(false, "Barang '${freshProduct.nama}' stok habis (0)! Tidak bisa lanjut transaksi.")
+        }
         val currentList = _cartItems.value.toMutableList()
         val index = currentList.indexOfFirst { it.product.plu == freshProduct.plu && it.selectedSatuan == selectedSatuan && !it.isVoid && !it.isRetur }
         val newTotalQty: Int
@@ -629,6 +678,9 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         if (index >= 0) {
             val existing = currentList[index]
             val updatedQty = existing.qty + qty
+            if (updatedQty > freshProduct.stok) {
+                return Pair(false, "Stok '${freshProduct.nama}' tidak mencukupi (Tersisa: ${freshProduct.stok}, Diminta: $updatedQty)!")
+            }
             val isGrosir = freshProduct.hargaGrosir > 0 && freshProduct.hargaGrosirQty > 0 && updatedQty >= freshProduct.hargaGrosirQty
             currentList[index] = existing.copy(
                 product = freshProduct,
@@ -638,6 +690,9 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             )
             newTotalQty = updatedQty
         } else {
+            if (qty > freshProduct.stok) {
+                return Pair(false, "Stok '${freshProduct.nama}' tidak mencukupi (Tersisa: ${freshProduct.stok}, Diminta: $qty)!")
+            }
             val isGrosir = freshProduct.hargaGrosir > 0 && freshProduct.hargaGrosirQty > 0 && qty >= freshProduct.hargaGrosirQty
             currentList.add(
                 CartItem(
@@ -679,7 +734,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                             savingsText = "Gratis ${product.promoGratisQty} ${product.satuan}"
                         )
                     }
-                    return
+                    return Pair(true, "Berhasil menambahkan ${product.nama}")
                 }
                 "BELI_X_POTONGAN" -> {
                     if (newTotalQty >= product.promoMinBeli) {
@@ -705,7 +760,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                             savingsText = "Potongan Rp ${product.promoPotonganNominal.toLong()}"
                         )
                     }
-                    return
+                    return Pair(true, "Berhasil menambahkan ${product.nama}")
                 }
                 "DISKON_NOMINAL" -> {
                     val hemat = newTotalQty * product.diskonNominal
@@ -717,7 +772,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                         currentQty = newTotalQty,
                         savingsText = "Hemat Rp ${hemat.toLong()}"
                     )
-                    return
+                    return Pair(true, "Berhasil menambahkan ${product.nama}")
                 }
                 "DISKON_PERSEN" -> {
                     val hemat = newTotalQty * product.hargaJual * (product.diskonPersen / 100.0)
@@ -729,7 +784,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                         currentQty = newTotalQty,
                         savingsText = "Hemat Rp ${hemat.toLong()}"
                     )
-                    return
+                    return Pair(true, "Berhasil menambahkan ${product.nama}")
                 }
                 "GROSIR" -> {
                     if (newTotalQty >= product.hargaGrosirQty && product.hargaGrosir > 0) {
@@ -754,7 +809,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                             savingsText = "Harga Rp ${product.hargaGrosir.toLong()}"
                         )
                     }
-                    return
+                    return Pair(true, "Berhasil menambahkan ${product.nama}")
                 }
             }
         }
@@ -783,30 +838,49 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
+        return Pair(true, "Berhasil menambahkan ${product.nama}")
     }
 
-    fun updateCartItemQty(index: Int, newQty: Int) {
+    fun updateCartItemQty(index: Int, newQty: Int): Pair<Boolean, String> {
         val currentList = _cartItems.value.toMutableList()
         if (index in currentList.indices) {
+            val item = currentList[index]
             if (newQty <= 0) {
                 currentList.removeAt(index)
+                _cartItems.value = currentList
+                return Pair(true, "${item.product.nama} dihapus dari keranjang")
             } else {
-                val item = currentList[index]
-                val isGrosir = item.product.hargaGrosir > 0 && item.product.hargaGrosirQty > 0 && newQty >= item.product.hargaGrosirQty
+                val fresh = allProducts.value.find { it.plu == item.product.plu } ?: item.product
+                if (!item.isRetur && !item.isVoid) {
+                    if (fresh.stok <= 0) {
+                        currentList.removeAt(index)
+                        _cartItems.value = currentList
+                        return Pair(false, "Stok '${fresh.nama}' habis (0)! Item dihapus dari transaksi.")
+                    }
+                    if (newQty > fresh.stok) {
+                        return Pair(false, "Stok '${fresh.nama}' tidak mencukupi (Tersisa: ${fresh.stok})!")
+                    }
+                }
+                val isGrosir = fresh.hargaGrosir > 0 && fresh.hargaGrosirQty > 0 && newQty >= fresh.hargaGrosirQty
                 currentList[index] = item.copy(
+                    product = fresh,
                     qty = newQty,
                     isGrosirApplied = isGrosir
                 )
+                _cartItems.value = currentList
+                return Pair(true, "Qty ${fresh.nama} diubah menjadi $newQty")
             }
-            _cartItems.value = currentList
         }
+        return Pair(false, "Item tidak ditemukan")
     }
 
-    fun updateCartItemQty(plu: String, newQty: Int) {
+    fun updateCartItemQty(plu: String, newQty: Int): Pair<Boolean, String> {
         val currentList = _cartItems.value
         val index = currentList.indexOfFirst { it.product.plu == plu }
-        if (index >= 0) {
+        return if (index >= 0) {
             updateCartItemQty(index, newQty)
+        } else {
+            Pair(false, "Item tidak ditemukan")
         }
     }
 
@@ -861,24 +935,40 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val product = repository.getProductByPluOrBarcode(trimmed)
             if (product != null) {
+                if (product.stok <= 0) {
+                    onResult(false, "Barang '${product.nama}' stok habis (0)! Tidak bisa lanjut transaksi.")
+                    return@launch
+                }
                 val targetSatuan = when {
                     trimmed.equals(product.barcodeRepack, ignoreCase = true) && product.isRepack && product.satuanRepack.isNotBlank() -> product.satuanRepack
                     trimmed.equals(product.barcodeRepack2, ignoreCase = true) && product.isRepack && product.satuanRepack2.isNotBlank() -> product.satuanRepack2
                     else -> product.satuan
                 }
-                addProductToCart(product, 1, targetSatuan)
+                val res = addProductToCart(product, 1, targetSatuan)
+                if (!res.first) {
+                    onResult(false, res.second)
+                    return@launch
+                }
                 val unitLabel = if (targetSatuan != product.satuan) " ($targetSatuan)" else ""
                 onResult(true, "Berhasil menambahkan ${product.nama}$unitLabel")
             } else {
                 val matches = repository.searchProducts(trimmed)
                 if (matches.size == 1) {
                     val single = matches.first()
+                    if (single.stok <= 0) {
+                        onResult(false, "Barang '${single.nama}' stok habis (0)! Tidak bisa lanjut transaksi.")
+                        return@launch
+                    }
                     val targetSatuan = when {
                         trimmed.equals(single.barcodeRepack, ignoreCase = true) && single.isRepack && single.satuanRepack.isNotBlank() -> single.satuanRepack
                         trimmed.equals(single.barcodeRepack2, ignoreCase = true) && single.isRepack && single.satuanRepack2.isNotBlank() -> single.satuanRepack2
                         else -> single.satuan
                     }
-                    addProductToCart(single, 1, targetSatuan)
+                    val res = addProductToCart(single, 1, targetSatuan)
+                    if (!res.first) {
+                        onResult(false, res.second)
+                        return@launch
+                    }
                     val unitLabel = if (targetSatuan != single.satuan) " ($targetSatuan)" else ""
                     onResult(true, "Berhasil menambahkan ${single.nama}$unitLabel")
                 } else if (matches.size > 1) {
@@ -1026,6 +1116,40 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         val grand = grandTotal.value
         if (hasRetur && grand < 0) {
             return Pair(false, "Nilai total belanja setelah retur tidak boleh negatif (minimum Rp 0)!")
+        }
+        return Pair(true, "")
+    }
+
+    fun validateTransactionForCheckout(): Pair<Boolean, String> {
+        if (!_isShiftOpen.value) {
+            return Pair(false, "Shift belum dibuka! Harap buka shift kasir terlebih dahulu.")
+        }
+        val items = _cartItems.value
+        if (items.isEmpty()) {
+            return Pair(false, "Keranjang belanja masih kosong! Silakan scan barang terlebih dahulu.")
+        }
+        val nonVoidItems = items.filter { !it.isVoid }
+        if (nonVoidItems.isEmpty()) {
+            return Pair(false, "Semua item di keranjang telah di-void! Tidak ada transaksi yang dapat diproses.")
+        }
+        val grand = grandTotal.value
+        if (grand <= 0.0) {
+            return Pair(false, "Total transaksi Rp 0! Transaksi dengan nilai Rp 0 tidak dapat diproses.")
+        }
+        for (item in items) {
+            if (!item.isVoid && !item.isRetur) {
+                val liveProd = allProducts.value.find { it.plu == item.product.plu } ?: item.product
+                if (liveProd.stok <= 0) {
+                    return Pair(false, "Barang '${liveProd.nama}' stok habis (0)! Tidak bisa lanjut transaksi.")
+                }
+                if (item.qty > liveProd.stok) {
+                    return Pair(false, "Jumlah '${liveProd.nama}' (${item.qty}) melebihi stok yang tersedia (${liveProd.stok})! Kurangi jumlah terlebih dahulu.")
+                }
+            }
+        }
+        val returCheck = isReturValidForCheckout()
+        if (!returCheck.first) {
+            return returCheck
         }
         return Pair(true, "")
     }
@@ -1331,8 +1455,9 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         refPembayaran: String = "",
         onComplete: (Boolean, String) -> Unit
     ) {
-        if (!_isShiftOpen.value) {
-            onComplete(false, "Shift belum dibuka! Harap buka shift kasir terlebih dahulu.")
+        val validation = validateTransactionForCheckout()
+        if (!validation.first) {
+            onComplete(false, validation.second)
             return
         }
         val config = storeConfig.value
@@ -1341,8 +1466,9 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         val items = _cartItems.value
-        if (items.isEmpty()) {
-            onComplete(false, "Keranjang belanja kosong")
+        val grand = grandTotal.value + donasi
+        if (grand <= 0.0) {
+            onComplete(false, "Total transaksi Rp 0! Transaksi dengan nilai Rp 0 tidak dapat diproses.")
             return
         }
 
@@ -1350,7 +1476,6 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             val bonNo = _currentBonNo.value
             val kasir = _currentCashier.value ?: CashierUserEntity("001", "Kasir Default", "1111")
             val sub = subtotal.value
-            val grand = grandTotal.value + donasi
 
             val txItems = items.map { item ->
                 TransactionItemEntity(
@@ -1406,14 +1531,20 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         refPembayaran: String = "",
         onComplete: (Boolean, String, TransactionEntity?) -> Unit
     ) {
+        val validation = validateTransactionForCheckout()
+        if (!validation.first) {
+            onComplete(false, validation.second, null)
+            return
+        }
         val config = storeConfig.value
         if (config.isTrial && allTransactions.value.size >= TRIAL_TRANSACTION_LIMIT) {
             onComplete(false, "Batas maksimal $TRIAL_TRANSACTION_LIMIT transaksi masa Trial telah tercapai. Silakan aktivasi lisensi Pro atau Enterprise untuk melanjutkan tanpa batasan.", null)
             return
         }
         val items = _cartItems.value
-        if (items.isEmpty()) {
-            onComplete(false, "Keranjang belanja kosong", null)
+        val grand = grandTotal.value
+        if (grand <= 0.0) {
+            onComplete(false, "Total transaksi Rp 0! Transaksi dengan nilai Rp 0 tidak dapat diproses.", null)
             return
         }
 
@@ -1421,7 +1552,6 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             val bonNo = _currentBonNo.value
             val kasir = _currentCashier.value ?: CashierUserEntity("001", "Kasir Default", "1111")
             val sub = subtotal.value
-            val grand = grandTotal.value
             val kembalian = if (caraBayar == "TUNAI") (bayarTunai - grand).coerceAtLeast(0.0) else 0.0
 
             val txItems = items.map { item ->
@@ -1715,15 +1845,19 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         viewModelScope.launch {
             val kasir = _currentCashier.value ?: CashierUserEntity("11111111", "Owner", "1234", "OWNER")
+            val nik = kasir.nik
             val record = repository.calculateClerek(
                 kasirNik = kasir.nik,
                 modalKasir = _shiftModalAwal.value,
                 uangSetoranFisik = uangSetoranFisik,
                 shiftNum = _activeShift.value
             )
-            // Shift aktif sampai proses clerek selesai dilakukan
+            // Shift aktif untuk kasir ini ditutup setelah proses clerek selesai
             _isShiftOpen.value = false
-            shiftPrefs.edit().putBoolean("is_shift_open", false).apply()
+            shiftPrefs.edit()
+                .putBoolean("is_shift_open_$nik", false)
+                .putBoolean("is_shift_open", false)
+                .apply()
             clearCart()
             onComplete(record)
         }
@@ -1747,12 +1881,17 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
 
     // Shift management
     fun openShift(shiftNum: Int, modalAwal: Double) {
+        val nik = _currentCashier.value?.nik ?: "default"
         val timeNow = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
         _activeShift.value = shiftNum
         _shiftModalAwal.value = modalAwal
         _isShiftOpen.value = true
         _shiftOpenedAt.value = timeNow
         shiftPrefs.edit()
+            .putBoolean("is_shift_open_$nik", true)
+            .putInt("active_shift_$nik", shiftNum)
+            .putFloat("shift_modal_awal_$nik", modalAwal.toFloat())
+            .putString("shift_opened_at_$nik", timeNow)
             .putBoolean("is_shift_open", true)
             .putInt("active_shift", shiftNum)
             .putFloat("shift_modal_awal", modalAwal.toFloat())
@@ -1761,8 +1900,12 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closeShift() {
+        val nik = _currentCashier.value?.nik ?: "default"
         _isShiftOpen.value = false
-        shiftPrefs.edit().putBoolean("is_shift_open", false).apply()
+        shiftPrefs.edit()
+            .putBoolean("is_shift_open_$nik", false)
+            .putBoolean("is_shift_open", false)
+            .apply()
     }
 
     fun lockScreen() {
@@ -1787,11 +1930,11 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         }
         _isUserLoggedIn.value = false
         _currentCashier.value = null
+        _isShiftOpen.value = false // Saat user logout, session kasir ditutup sehingga kasir berikutnya wajib buka shift
         shiftPrefs.edit()
             .putBoolean("is_user_logged_in", false)
             .remove("last_logged_in_nik")
             .apply()
-        // Shift TIDAK ditutup saat logout; shift tetap aktif sampai proses clerek selesai dilakukan
         clearCart()
     }
 
@@ -1803,6 +1946,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             if (cashier != null && cashier.pin == trimmedPass) {
                 _currentCashier.value = cashier
                 _isUserLoggedIn.value = true
+                loadShiftForCashier(cashier.nik)
                 shiftPrefs.edit()
                     .putBoolean("is_user_logged_in", true)
                     .putString("last_logged_in_nik", cashier.nik)
@@ -1813,6 +1957,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 repository.saveCashier(owner)
                 _currentCashier.value = owner
                 _isUserLoggedIn.value = true
+                loadShiftForCashier(owner.nik)
                 shiftPrefs.edit()
                     .putBoolean("is_user_logged_in", true)
                     .putString("last_logged_in_nik", owner.nik)
@@ -2011,6 +2156,11 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         get() = syncConfig.value.deviceId
 
     fun activateOrUpgradeLicense(key: String, onComplete: (Boolean, String) -> Unit) {
+        val cashier = _currentCashier.value
+        if (cashier != null && !cashier.isOwner()) {
+            onComplete(false, "Hanya Owner yang berhak mengaktifkan atau mengubah lisensi toko.")
+            return
+        }
         val devId = syncConfig.value.deviceId
         val (isValid, tierOrMsg) = com.example.util.PosLicenseHelper.validateLicenseKey(devId, key)
         if (isValid) {
@@ -2029,6 +2179,10 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun resetLicenseToTrial(onComplete: () -> Unit) {
+        val cashier = _currentCashier.value
+        if (cashier != null && !cashier.isOwner()) {
+            return
+        }
         val currentCfg = storeConfig.value
         val updated = currentCfg.copy(
             isLicensed = false,

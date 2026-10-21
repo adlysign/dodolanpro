@@ -113,6 +113,15 @@ fun PosScreen(
     var showCancelDialog by remember { mutableStateOf(false) }
     var feedbackMessage by remember { mutableStateOf("") }
     val rootFocusRequester = remember { FocusRequester() }
+
+    val handleOpenSis = {
+        if (currentCashier?.isOwner() == true || currentCashier?.canAccessSis == true) {
+            onNavigateTo(PosNavDestination.SIS_DASHBOARD)
+        } else {
+            feedbackMessage = "Akses Ditolak: Akun kasir (${currentCashier?.nama ?: ""}) tidak memiliki izin akses SIS Back Office!"
+        }
+    }
+
     LaunchedEffect(Unit) {
         try {
             rootFocusRequester.requestFocus()
@@ -142,19 +151,16 @@ fun PosScreen(
                         feedbackMessage = "Pilih item di tabel terlebih dahulu untuk VOID!"
                     }
                 }
-                PosShortcutEvent.F10_SIS -> onNavigateTo(PosNavDestination.SIS_DASHBOARD)
+                PosShortcutEvent.F10_SIS -> handleOpenSis()
                 PosShortcutEvent.F12_BAYAR, PosShortcutEvent.PLUS_PAY -> {
-                    if (!isShiftOpen) {
-                        feedbackMessage = "Shift belum dibuka! Harap buka shift kasir terlebih dahulu."
-                        showBukaShiftDialog = true
-                    } else if (cartItems.isEmpty()) {
-                        feedbackMessage = "Keranjang belanja masih kosong!"
+                    val check = viewModel.validateTransactionForCheckout()
+                    if (!check.first) {
+                        feedbackMessage = check.second
+                        if (!isShiftOpen) showBukaShiftDialog = true
                     } else if (isTrialLimited) {
                         showTrialLimitDialog = true
                     } else {
-                        val validity = viewModel.isReturValidForCheckout()
-                        if (!validity.first) feedbackMessage = validity.second
-                        else showPaymentDialog = true
+                        showPaymentDialog = true
                     }
                 }
                 PosShortcutEvent.ESCAPE -> {
@@ -382,7 +388,9 @@ fun PosScreen(
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
                                 color = Color.White.copy(alpha = 0.2f),
-                                modifier = Modifier.clickable { onNavigateTo(PosNavDestination.SIS_DASHBOARD) }
+                                modifier = Modifier
+                                    .testTag("btn_menu_sis")
+                                    .clickable { handleOpenSis() }
                             ) {
                                 Box(
                                     modifier = Modifier.size(28.dp),
@@ -470,20 +478,19 @@ fun PosScreen(
                                 true
                             }
                             Key.F10 -> {
-                                onNavigateTo(PosNavDestination.SIS_DASHBOARD)
+                                handleOpenSis()
                                 true
                             }
                             Key.Plus, Key.NumPadAdd -> {
                                 if (barcodeText.isEmpty() && cartItems.isNotEmpty()) {
-                                    if (!isShiftOpen) {
-                                        feedbackMessage = "Shift belum dibuka! Harap buka shift kasir terlebih dahulu."
-                                        showBukaShiftDialog = true
+                                    val check = viewModel.validateTransactionForCheckout()
+                                    if (!check.first) {
+                                        feedbackMessage = check.second
+                                        if (!isShiftOpen) showBukaShiftDialog = true
                                     } else if (isTrialLimited) {
                                         showTrialLimitDialog = true
                                     } else {
-                                        val validity = viewModel.isReturValidForCheckout()
-                                        if (!validity.first) feedbackMessage = validity.second
-                                        else showPaymentDialog = true
+                                        showPaymentDialog = true
                                     }
                                     true
                                 } else false
@@ -653,7 +660,7 @@ fun PosScreen(
                                     feedbackMessage = "Pilih item di tabel terlebih dahulu untuk VOID!"
                                 }
                             },
-                            onF10Menu = { onNavigateTo(PosNavDestination.SIS_DASHBOARD) }
+                            onF10Menu = { handleOpenSis() }
                         )
                     }
 
@@ -699,20 +706,14 @@ fun PosScreen(
                             onBackspace = { if (barcodeText.isNotEmpty()) barcodeText = barcodeText.dropLast(1) },
                             onClear = { barcodeText = "" },
                             onPlusCashend = {
-                                if (!isShiftOpen) {
-                                    feedbackMessage = "Shift belum dibuka! Harap buka shift kasir terlebih dahulu."
-                                    showBukaShiftDialog = true
-                                } else if (cartItems.isEmpty()) {
-                                    feedbackMessage = "Keranjang belanja masih kosong!"
+                                val check = viewModel.validateTransactionForCheckout()
+                                if (!check.first) {
+                                    feedbackMessage = check.second
+                                    if (!isShiftOpen) showBukaShiftDialog = true
                                 } else if (isTrialLimited) {
                                     showTrialLimitDialog = true
                                 } else {
-                                    val validity = viewModel.isReturValidForCheckout()
-                                    if (!validity.first) {
-                                        feedbackMessage = validity.second
-                                    } else {
-                                        showPaymentDialog = true
-                                    }
+                                    showPaymentDialog = true
                                 }
                             },
                             onEnter = {
@@ -720,12 +721,15 @@ fun PosScreen(
                                     feedbackMessage = "Shift belum dibuka! Harap buka shift kasir terlebih dahulu."
                                     showBukaShiftDialog = true
                                 } else if (barcodeText.isNotEmpty()) {
-                                    viewModel.submitBarcodeOrPlu(barcodeText) {
-                                        feedbackMessage = "Barang tidak ditemukan!"
+                                    viewModel.submitBarcodeOrPlu(barcodeText) { ok, msg ->
+                                        feedbackMessage = msg
                                     }
                                     barcodeText = ""
                                 } else if (cartItems.isNotEmpty()) {
-                                    if (isTrialLimited) {
+                                    val check = viewModel.validateTransactionForCheckout()
+                                    if (!check.first) {
+                                        feedbackMessage = check.second
+                                    } else if (isTrialLimited) {
                                         showTrialLimitDialog = true
                                     } else {
                                         showPaymentDialog = true
@@ -891,24 +895,21 @@ fun PosScreen(
                                 feedbackMessage = "Pilih item di tabel terlebih dahulu!"
                             }
                         },
-                        onF10Menu = { onNavigateTo(PosNavDestination.SIS_DASHBOARD) }
+                        onF10Menu = { handleOpenSis() }
                     )
 
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Button(
                         onClick = {
-                            if (!isShiftOpen) {
-                                feedbackMessage = "Shift belum dibuka! Harap buka shift kasir terlebih dahulu."
-                                showBukaShiftDialog = true
-                            } else if (cartItems.isEmpty()) {
-                                feedbackMessage = "Keranjang belanja kosong!"
+                            val check = viewModel.validateTransactionForCheckout()
+                            if (!check.first) {
+                                feedbackMessage = check.second
+                                if (!isShiftOpen) showBukaShiftDialog = true
                             } else if (isTrialLimited) {
                                 showTrialLimitDialog = true
                             } else {
-                                val validity = viewModel.isReturValidForCheckout()
-                                if (!validity.first) feedbackMessage = validity.second
-                                else showPaymentDialog = true
+                                showPaymentDialog = true
                             }
                         },
                         modifier = Modifier.fillMaxWidth().height(52.dp).testTag("cashend_button_mobile"),
@@ -933,9 +934,15 @@ fun PosScreen(
                 if (!isShiftOpen) {
                     feedbackMessage = "Shift belum dibuka! Harap buka shift kasir terlebih dahulu."
                     showBukaShiftDialog = true
+                } else if (prod.stok <= 0) {
+                    feedbackMessage = "Barang '${prod.nama}' stok habis (0)! Tidak bisa lanjut transaksi."
                 } else {
-                    viewModel.addProductToCart(prod, qty)
-                    feedbackMessage = "${prod.nama} ($qty pcs) ditambahkan!"
+                    val res = viewModel.addProductToCart(prod, qty)
+                    if (res.first) {
+                        feedbackMessage = "${prod.nama} ($qty pcs) ditambahkan!"
+                    } else {
+                        feedbackMessage = res.second
+                    }
                 }
             }
         )
@@ -1121,7 +1128,7 @@ fun PosScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(onClick = {
                         showTrialLimitDialog = false
-                        onNavigateTo(PosNavDestination.SIS_DASHBOARD)
+                        handleOpenSis()
                     }) {
                         Text("MENU SIS", color = RetailNavy, fontSize = 12.sp)
                     }
@@ -1184,8 +1191,8 @@ fun PosScreen(
             onBarcodeDetected = { scannedCode ->
                 showCameraScannerDialog = false
                 barcodeText = scannedCode
-                viewModel.submitBarcodeOrPlu(scannedCode) {
-                    feedbackMessage = "Barang tidak ditemukan untuk barcode '$scannedCode'"
+                viewModel.submitBarcodeOrPlu(scannedCode) { ok, msg ->
+                    feedbackMessage = msg
                 }
             }
         )
@@ -1204,7 +1211,7 @@ fun PosScreen(
                     feedbackMessage = msg
                     if (ok) {
                         showLoginDialog = false
-                        if (!isShiftOpen) {
+                        if (!viewModel.isShiftOpen.value) {
                             showBukaShiftDialog = true
                         }
                     }
@@ -1341,8 +1348,8 @@ fun PosScreen(
                     onClick = {
                         val newQty = qtyInput.toIntOrNull() ?: item.qty
                         if (newQty > 0) {
-                            viewModel.updateCartItemQty(index, newQty)
-                            feedbackMessage = "Qty ${item.product.nama} diubah menjadi $newQty"
+                            val res = viewModel.updateCartItemQty(index, newQty)
+                            feedbackMessage = res.second
                         } else {
                             viewModel.removeCartItem(index)
                             feedbackMessage = "${item.product.nama} dihapus dari keranjang"

@@ -51,10 +51,16 @@ fun SisDashboardScreen(
     val allTransactions by viewModel.allTransactions.collectAsState()
     val syncConfig by viewModel.syncConfig.collectAsState()
 
+    val currentCashier by viewModel.currentCashier.collectAsState()
+    val isOwner = currentCashier?.isOwner() == true
+
     var showLicenseDialog by remember { mutableStateOf(false) }
     var inputLicenseKey by remember { mutableStateOf("") }
     var licenseDialogMessage by remember { mutableStateOf("") }
     var isLicenseSuccess by remember { mutableStateOf(false) }
+
+    var showAccessDeniedDialog by remember { mutableStateOf(false) }
+    var deniedMenuTitle by remember { mutableStateOf("") }
 
     val deviceId = viewModel.deviceId
 
@@ -102,11 +108,15 @@ fun SisDashboardScreen(
                 title = {
                     Column {
                         Text("SIS DASHBOARD TOKO", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Text("${storeConfig.storeName} (${storeConfig.storeCode})", fontSize = 11.sp, color = Color.White.copy(alpha = 0.85f))
+                        Text(
+                            "${storeConfig.storeName} (${storeConfig.storeCode}) • ${currentCashier?.nama ?: "Kasir"} [${currentCashier?.role ?: "KASIR"}]",
+                            fontSize = 11.sp,
+                            color = Color.White.copy(alpha = 0.85f)
+                        )
                     }
                 },
                 actions = {
-                    // Badge ID Device & Status Lisensi (digeser ke kanan rapi & profesional, tanpa shortcut kasir di sampingnya)
+                    // Badge ID Device & Status Lisensi (digeser ke kanan rapi & profesional)
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = when {
@@ -160,12 +170,21 @@ fun SisDashboardScreen(
                                         fontFamily = FontFamily.Monospace
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(
-                                        Icons.Default.Edit,
-                                        contentDescription = "Ubah Lisensi",
-                                        tint = Color.White.copy(alpha = 0.75f),
-                                        modifier = Modifier.size(11.dp)
-                                    )
+                                    if (isOwner) {
+                                        Icon(
+                                            Icons.Default.Edit,
+                                            contentDescription = "Ubah Lisensi (Owner)",
+                                            tint = Color.White.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Default.Visibility,
+                                            contentDescription = "Lihat Status Lisensi",
+                                            tint = Color.White.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                    }
                                 }
                                 Text(
                                     when {
@@ -207,32 +226,89 @@ fun SisDashboardScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(menuItems) { item ->
+                    val hasAccess = isOwner || viewModel.hasPermissionForDestination(item.destination)
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onNavigateTo(item.destination) }
-                            .testTag(item.testTag),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = item.color.copy(alpha = 0.12f),
-                                modifier = Modifier.size(44.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(item.icon, contentDescription = null, tint = item.color, modifier = Modifier.size(24.dp))
+                            .clickable {
+                                if (hasAccess) {
+                                    onNavigateTo(item.destination)
+                                } else {
+                                    deniedMenuTitle = item.title
+                                    showAccessDeniedDialog = true
                                 }
                             }
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(item.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.Black)
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(item.subtitle, fontSize = 10.sp, color = Color.Gray, maxLines = 1)
+                            .testTag(item.testTag),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (hasAccess) Color.White else Color(0xFFF8FAFC)
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = if (hasAccess) 2.dp else 0.5.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        border = if (!hasAccess) androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)) else null
+                    ) {
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (hasAccess) item.color.copy(alpha = 0.12f) else Color(0xFFE2E8F0),
+                                    modifier = Modifier.size(44.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            item.icon,
+                                            contentDescription = null,
+                                            tint = if (hasAccess) item.color else Color(0xFF94A3B8),
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    item.title,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = if (hasAccess) Color.Black else Color(0xFF64748B)
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    if (hasAccess) item.subtitle else "Akses Dibatasi - Butuh Wewenang",
+                                    fontSize = 10.sp,
+                                    color = if (hasAccess) Color.Gray else RetailRedPrimary,
+                                    maxLines = 1
+                                )
+                            }
+
+                            // Lock badge overlay untuk menu yang tidak memiliki izin akses
+                            if (!hasAccess) {
+                                Surface(
+                                    shape = RoundedCornerShape(topEnd = 10.dp, bottomStart = 8.dp),
+                                    color = Color(0xFFFFEBEE),
+                                    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFFFCDD2)),
+                                    modifier = Modifier.align(Alignment.TopEnd)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Lock,
+                                            contentDescription = "Terkunci",
+                                            tint = RetailRedPrimary,
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            "Terkunci",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = RetailRedPrimary
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -240,20 +316,88 @@ fun SisDashboardScreen(
         }
     }
 
+    // DIALOG AKSES MENU DITOLAK
+    if (showAccessDeniedDialog) {
+        AlertDialog(
+            onDismissRequest = { showAccessDeniedDialog = false },
+            icon = {
+                Icon(
+                    Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = RetailRedPrimary,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
+            title = {
+                Text(
+                    "Akses Menu Ditolak",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Akun Anda (${currentCashier?.nama ?: "Kasir"} [${currentCashier?.role ?: "KASIR"}]) tidak memiliki izin hak akses untuk membuka menu '${deniedMenuTitle}'.",
+                        fontSize = 13.sp,
+                        color = DarkText
+                    )
+                    Surface(
+                        color = Color(0xFFFFF3E0),
+                        shape = RoundedCornerShape(6.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFE082)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Security, contentDescription = null, tint = Color(0xFFE65100), modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Wewenang kasir dapat dikonfigurasi oleh Owner atau Administrator pada menu 'Karyawan & Kasir'.",
+                                fontSize = 11.sp,
+                                color = Color(0xFFE65100)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showAccessDeniedDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = RetailNavy)
+                ) {
+                    Text("MENGERTI")
+                }
+            }
+        )
+    }
+
     // DIALOG PENGATURAN & AKTIVASI LISENSI
+    // HANYA OWNER YANG DAPAT MENGUBAH / MENGAKTIFKAN LISENSI.
+    // PENGGUNA SELAIN OWNER HANYA BISA MELIHAT STATUS SAJA (READ-ONLY).
     if (showLicenseDialog) {
         AlertDialog(
             onDismissRequest = { showLicenseDialog = false },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Key, contentDescription = null, tint = RetailNavy)
+                    Icon(
+                        if (isOwner) Icons.Default.Key else Icons.Default.VerifiedUser,
+                        contentDescription = null,
+                        tint = RetailNavy
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("AKTIVASI & LISENSI APLIKASI", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(
+                        if (isOwner) "AKTIVASI & LISENSI APLIKASI (OWNER)" else "STATUS LISENSI APLIKASI",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
                 }
             },
             text = {
                 Column {
-                    // Box Informasi ID Device Perangkat Ini
+                    // Box Informasi ID Device Perangkat Ini (Dapat disalin oleh siapa pun untuk diserahkan ke Owner)
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
@@ -344,51 +488,99 @@ fun SisDashboardScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    OutlinedTextField(
-                        value = inputLicenseKey,
-                        onValueChange = { inputLicenseKey = it.uppercase() },
-                        label = { Text("Masukkan Kode Lisensi") },
-                        placeholder = { Text("PRO-... atau ENT-...") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("input_license_key")
-                    )
-
-                    if (licenseDialogMessage.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(6.dp))
+                    if (isOwner) {
+                        // OWNER VIEW: Input field dan panduan aktivasi
                         Text(
-                            licenseDialogMessage,
-                            color = if (isLicenseSuccess) RetailGreen else RetailRedPrimary,
+                            "Akun Anda terverifikasi sebagai OWNER. Anda berwenang memasukkan kode lisensi atau mereset status lisensi aplikasi.",
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
+                            color = RetailNavy,
+                            fontWeight = FontWeight.Medium
                         )
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        OutlinedTextField(
+                            value = inputLicenseKey,
+                            onValueChange = { inputLicenseKey = it.uppercase() },
+                            label = { Text("Masukkan Kode Lisensi") },
+                            placeholder = { Text("PRO-... atau ENT-...") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("input_license_key")
+                        )
+
+                        if (licenseDialogMessage.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                licenseDialogMessage,
+                                color = if (isLicenseSuccess) RetailGreen else RetailRedPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    } else {
+                        // NON-OWNER VIEW: Read-only pemberitahuan wewenang terbatas
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFFFF8E1),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFE082)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Icon(
+                                    Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = Color(0xFFF57F17),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        "HAK AKSES LISENSI KHUSUS OWNER",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFFE65100)
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        "Hanya akun OWNER yang dapat mengubah, mengaktifkan, atau mereset lisensi toko. Akun Anda (${currentCashier?.nama ?: "Kasir"} [${currentCashier?.role ?: "KASIR"}]) hanya diizinkan melihat status lisensi.",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF5D4037)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        if (inputLicenseKey.isBlank()) {
-                            licenseDialogMessage = "Masukkan kode lisensi terlebih dahulu."
-                            isLicenseSuccess = false
-                            return@Button
-                        }
-                        viewModel.activateOrUpgradeLicense(inputLicenseKey) { ok, msg ->
-                            isLicenseSuccess = ok
-                            licenseDialogMessage = msg
-                            if (ok) {
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                if (isOwner) {
+                    Button(
+                        onClick = {
+                            if (inputLicenseKey.isBlank()) {
+                                licenseDialogMessage = "Masukkan kode lisensi terlebih dahulu."
+                                isLicenseSuccess = false
+                                return@Button
                             }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = RetailGreen)
-                ) {
-                    Text("AKTIFKAN LISENSI")
+                            viewModel.activateOrUpgradeLicense(inputLicenseKey) { ok, msg ->
+                                isLicenseSuccess = ok
+                                licenseDialogMessage = msg
+                                if (ok) {
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = RetailGreen)
+                    ) {
+                        Text("AKTIFKAN LISENSI")
+                    }
                 }
             },
             dismissButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // Tombol Reset ke Trial (untuk pengujian atau mengganti paket)
-                    if (storeConfig.isLicensed) {
+                    // Tombol Reset ke Trial hanya muncul untuk OWNER saat lisensi aktif
+                    if (isOwner && storeConfig.isLicensed) {
                         TextButton(
                             onClick = {
                                 viewModel.resetLicenseToTrial {

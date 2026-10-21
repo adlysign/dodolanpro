@@ -250,7 +250,28 @@ fun LovProductDialog(
                                     )
                                 }
                             }
-                            Text("${prod.stok}", modifier = Modifier.weight(1f), fontSize = 12.sp, color = Color.Black)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    if (prod.stok <= 0) "0 (HABIS)" else "${prod.stok}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (prod.stok <= 0) RetailRedPrimary else Color.Black
+                                )
+                                if (prod.stok <= 0) {
+                                    Surface(
+                                        color = RetailRedPrimary.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(2.dp)
+                                    ) {
+                                        Text(
+                                            "STOK 0",
+                                            color = RetailRedPrimary,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Black,
+                                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                            }
                             Column(modifier = Modifier.weight(1.5f), horizontalAlignment = Alignment.End) {
                                 if (prod.hasDiscountOrPromo() || prod.isPromo) {
                                     Text(
@@ -309,18 +330,28 @@ fun LovProductDialog(
                         OutlinedButton(onClick = onDismiss, modifier = Modifier.padding(end = 8.dp)) {
                             Text("TUTUP")
                         }
+                        val isProductInStock = selectedProduct != null && (selectedProduct?.stok ?: 0) > 0
                         Button(
                             onClick = {
                                 selectedProduct?.let {
-                                    onSelectProduct(it, selectedQty)
-                                    onDismiss()
+                                    if (it.stok > 0) {
+                                        onSelectProduct(it, selectedQty)
+                                        onDismiss()
+                                    }
                                 }
                             },
-                            enabled = selectedProduct != null,
-                            colors = ButtonDefaults.buttonColors(containerColor = RetailRedPrimary, contentColor = Color.White),
+                            enabled = isProductInStock,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isProductInStock) RetailRedPrimary else Color.LightGray,
+                                contentColor = Color.White
+                            ),
                             modifier = Modifier.testTag("lov_ambil_button")
                         ) {
-                            Text("AMBIL (ENTER)", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text(
+                                if (selectedProduct != null && (selectedProduct?.stok ?: 0) <= 0) "STOK HABIS (0)" else "AMBIL (ENTER)",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -629,7 +660,12 @@ fun PaymentDialog(
                 ) {
                     Column {
                         Text("TOTAL TAGIHAN", color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        Text(formatRupiah(grandTotal), color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
+                        Text(
+                            if (grandTotal <= 0.0) "Rp 0 (TRANSAKSI KOSONG/TIDAK VALID)" else formatRupiah(grandTotal),
+                            color = Color.White,
+                            fontSize = if (grandTotal <= 0.0) 16.sp else 24.sp,
+                            fontWeight = FontWeight.Black
+                        )
                     }
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Default.Close, contentDescription = "Batal", tint = Color.White)
@@ -1045,6 +1081,10 @@ fun PaymentDialog(
                     }
                     Button(
                         onClick = {
+                            if (grandTotal <= 0.0) {
+                                errorMessage = "Total transaksi Rp 0! Transaksi dengan nilai Rp 0 tidak dapat diproses."
+                                return@Button
+                            }
                             when (selectedMethod) {
                                 "TUNAI" -> {
                                     if (numericCash < grandTotal) {
@@ -1076,10 +1116,18 @@ fun PaymentDialog(
                                 }
                             }
                         },
+                        enabled = grandTotal > 0.0,
                         modifier = Modifier.weight(1.5f).testTag("payment_proses_button"),
-                        colors = ButtonDefaults.buttonColors(containerColor = RetailRedPrimary, contentColor = Color.White)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (grandTotal > 0.0) RetailRedPrimary else Color.LightGray,
+                            contentColor = Color.White
+                        )
                     ) {
-                        Text("PROSES (ENTER)", fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(
+                            if (grandTotal <= 0.0) "TIDAK VALID" else "PROSES (ENTER)",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
                     }
                 }
             }
