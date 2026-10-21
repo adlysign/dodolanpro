@@ -297,9 +297,9 @@ class ExampleRobolectricTest {
     // Owner activates license -> SUCCEEDS
     var ownerActivationOk = false
     vm.activateOrUpgradeLicense(proKey) { ok, _ -> ownerActivationOk = ok }
-    for (i in 1..20) {
+    for (i in 1..30) {
       org.robolectric.shadows.ShadowLooper.idleMainLooper()
-      if (ownerActivationOk) break
+      if (ownerActivationOk && vm.storeConfig.value.isLicensed) break
       Thread.sleep(50)
     }
     assert(ownerActivationOk)
@@ -309,14 +309,91 @@ class ExampleRobolectricTest {
     // Owner resets license -> SUCCEEDS
     var resetDone = false
     vm.resetLicenseToTrial { resetDone = true }
-    for (i in 1..20) {
+    for (i in 1..30) {
       org.robolectric.shadows.ShadowLooper.idleMainLooper()
-      if (resetDone) break
+      if (resetDone && !vm.storeConfig.value.isLicensed) break
       Thread.sleep(50)
     }
     assert(resetDone)
     assert(!vm.storeConfig.value.isLicensed)
     assertEquals("TRIAL", vm.storeConfig.value.licenseType)
+  }
+
+  @Test
+  fun `test shift management and transaction cancellation permissions`() = kotlinx.coroutines.runBlocking {
+    val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val vm = com.example.ui.viewmodel.PosViewModel(app)
+
+    val restrictedCashier = com.example.data.local.entity.CashierUserEntity(
+      nik = "KASIR88",
+      nama = "Restricted Kasir",
+      pin = "8888",
+      role = "KASIR",
+      statusAktif = true,
+      canAccessSis = true,
+      canManageShift = false,
+      canCancelTransaksi = false
+    )
+    vm.repository.saveCashier(restrictedCashier)
+
+    var loginDone = false
+    vm.loginCashier("KASIR88", "8888") { ok, _ -> loginDone = ok }
+    for (i in 1..20) {
+      org.robolectric.shadows.ShadowLooper.idleMainLooper()
+      if (loginDone) break
+      Thread.sleep(50)
+    }
+    assert(loginDone)
+
+    // Verify destination permission check for PENGATURAN_SHIFT
+    assert(!vm.hasPermissionForDestination(com.example.ui.viewmodel.PosNavDestination.PENGATURAN_SHIFT))
+    assert(vm.currentCashier.value?.canCancelTransaksi == false)
+
+    // Navigation should be blocked
+    vm.navigateTo(com.example.ui.viewmodel.PosNavDestination.PENGATURAN_SHIFT)
+    assert(vm.currentDestination.value != com.example.ui.viewmodel.PosNavDestination.PENGATURAN_SHIFT)
+
+    // Now grant canManageShift
+    val updatedCashier = restrictedCashier.copy(canManageShift = true, canCancelTransaksi = true)
+    vm.repository.saveCashier(updatedCashier)
+
+    var reloginDone = false
+    vm.loginCashier("KASIR88", "8888") { ok, _ -> reloginDone = ok }
+    for (i in 1..20) {
+      org.robolectric.shadows.ShadowLooper.idleMainLooper()
+      if (reloginDone) break
+      Thread.sleep(50)
+    }
+    assert(reloginDone)
+    assert(vm.hasPermissionForDestination(com.example.ui.viewmodel.PosNavDestination.PENGATURAN_SHIFT))
+    assert(vm.currentCashier.value?.canCancelTransaksi == true)
+  }
+
+  @Test
+  fun `test blind clerek calculation and shift closure`() = kotlinx.coroutines.runBlocking {
+    val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val vm = com.example.ui.viewmodel.PosViewModel(app)
+
+    vm.openShift(1, 100000.0)
+    assert(vm.isShiftOpen.value)
+
+    var clerekResult: com.example.data.local.entity.ClerekEntity? = null
+    // Cashier inputs modal 100,000 and counted physical cash 100,000 blindly
+    vm.submitClerek(100000.0, 100000.0) { record ->
+      clerekResult = record
+    }
+
+    for (i in 1..20) {
+      org.robolectric.shadows.ShadowLooper.idleMainLooper()
+      if (clerekResult != null) break
+      Thread.sleep(50)
+    }
+
+    assert(clerekResult != null)
+    assertEquals(100000.0, clerekResult!!.modalAwal, 0.01)
+    assertEquals(100000.0, clerekResult!!.uangSetoranFisik, 0.01)
+    assertEquals("PAS", clerekResult!!.statusSelisih)
+    assertEquals(false, vm.isShiftOpen.value) // Shift automatically closed
   }
 }
 

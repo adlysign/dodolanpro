@@ -665,6 +665,7 @@ fun CashierEditAccessDialog(
     var canBukaTutupShift by remember { mutableStateOf(cashier?.canBukaTutupShift ?: true) }
     var canClerekKasir by remember { mutableStateOf(cashier?.canClerekKasir ?: true) }
     var canViewOmsetShift by remember { mutableStateOf(cashier?.canViewOmsetShift ?: false) }
+    var canManageShift by remember { mutableStateOf(cashier?.canManageShift ?: false) }
 
     // --- 3. HAK AKSES SIS & MANAJEMEN ---
     var canAccessSis by remember { mutableStateOf(cashier?.canAccessSis ?: false) }
@@ -703,6 +704,7 @@ fun CashierEditAccessDialog(
         canBukaTutupShift = template.canBukaTutupShift
         canClerekKasir = template.canClerekKasir
         canViewOmsetShift = template.canViewOmsetShift
+        canManageShift = template.canManageShift
 
         canAccessSis = template.canAccessSis
         canManageProduk = template.canManageProduk
@@ -732,6 +734,7 @@ fun CashierEditAccessDialog(
         canBukaTutupShift = enable
         canClerekKasir = enable
         canViewOmsetShift = enable
+        canManageShift = enable
 
         canAccessSis = enable
         canManageProduk = enable
@@ -751,6 +754,7 @@ fun CashierEditAccessDialog(
     val activeCount = listOf(
         canTransaksiPos, canVoidItem, canCancelTransaksi, canReturKonsumen, canPendingRecall,
         canManualDiscount, canBukaLaciUang, canBukaTutupShift, canClerekKasir, canViewOmsetShift,
+        canManageShift,
         canAccessSis, canManageProduk, canManagePembelian, canCetakLabelRak, canStockOpname,
         canReturPembelian, canEodTutupToko, canViewLaporan, canManageVoucher, canManageKaryawan,
         canManageMember, canManageSettings, canBackupRestore
@@ -788,7 +792,7 @@ fun CashierEditAccessDialog(
                                 color = Color.White
                             )
                             Text(
-                                "Total Hak Akses Aktif: $activeCount dari 23 Izin",
+                                "Total Hak Akses Aktif: $activeCount dari 24 Izin",
                                 fontSize = 11.sp,
                                 color = Color.White.copy(alpha = 0.85f)
                             )
@@ -1104,6 +1108,13 @@ fun CashierEditAccessDialog(
                                     checked = canViewOmsetShift,
                                     onCheckedChange = { canViewOmsetShift = it }
                                 )
+                                HorizontalDivider(color = Color(0xFFF0F0F0))
+                                PermissionToggleRow(
+                                    title = "Pengaturan Shift di SIS",
+                                    description = "Dapat mengakses dan mengonfigurasi jam kerja shift kasir di menu SIS",
+                                    checked = canManageShift,
+                                    onCheckedChange = { canManageShift = it }
+                                )
                             }
 
                             Spacer(modifier = Modifier.height(10.dp))
@@ -1265,6 +1276,7 @@ fun CashierEditAccessDialog(
                                     canBukaTutupShift = canBukaTutupShift,
                                     canClerekKasir = canClerekKasir,
                                     canViewOmsetShift = canViewOmsetShift,
+                                    canManageShift = canManageShift,
 
                                     canAccessSis = canAccessSis,
                                     canManageProduk = canManageProduk,

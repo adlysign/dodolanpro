@@ -110,6 +110,7 @@ data class CashierUserEntity(
     val canBukaTutupShift: Boolean = true,
     val canClerekKasir: Boolean = true,
     val canViewOmsetShift: Boolean = false,
+    val canManageShift: Boolean = false,
 
     // --- HAK AKSES SIS & MANAJEMEN ---
     val canAccessSis: Boolean = false,
@@ -142,6 +143,7 @@ data class CashierUserEntity(
         if (canBukaTutupShift) count++
         if (canClerekKasir) count++
         if (canViewOmsetShift) count++
+        if (canManageShift) count++
         if (canAccessSis) count++
         if (canManageProduk) count++
         if (canManagePembelian) count++
@@ -184,6 +186,7 @@ data class CashierUserEntity(
                     canBukaTutupShift = true,
                     canClerekKasir = true,
                     canViewOmsetShift = true,
+                    canManageShift = true,
                     canAccessSis = true,
                     canManageProduk = true,
                     canManagePembelian = true,
@@ -214,6 +217,7 @@ data class CashierUserEntity(
                     canBukaTutupShift = true,
                     canClerekKasir = true,
                     canViewOmsetShift = true,
+                    canManageShift = true,
                     canAccessSis = true,
                     canManageProduk = true,
                     canManagePembelian = true,
@@ -244,6 +248,7 @@ data class CashierUserEntity(
                     canBukaTutupShift = true,
                     canClerekKasir = true,
                     canViewOmsetShift = false,
+                    canManageShift = false,
                     canAccessSis = false,
                     canManageProduk = false,
                     canManagePembelian = false,

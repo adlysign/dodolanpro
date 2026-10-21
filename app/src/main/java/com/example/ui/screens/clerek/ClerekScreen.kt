@@ -159,7 +159,152 @@ fun ClerekScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        if (!isShiftOpen) {
+                        if (lastSettledRecord != null) {
+                            // Tampilan HASIL REKONSILIASI CLEREK setelah proses selesai
+                            val record = lastSettledRecord!!
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.5.dp,
+                                    when (record.statusSelisih) {
+                                        "LEBIH" -> RetailNavy
+                                        "KURANG" -> RetailRedPrimary
+                                        else -> RetailGreen
+                                    }
+                                ),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                "HASIL REKONSILIASI CLEREK",
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 14.sp,
+                                                color = RetailNavy
+                                            )
+                                            Text(
+                                                "${record.kasirNama.ifBlank { currentCashier?.nama ?: "Kasir" }} (${record.kasirNik}) • ${record.shift}",
+                                                fontSize = 11.sp,
+                                                color = GrayText
+                                            )
+                                        }
+                                        Surface(
+                                            color = when (record.statusSelisih) {
+                                                "LEBIH" -> RetailNavy
+                                                "KURANG" -> RetailRedPrimary
+                                                else -> RetailGreen
+                                            },
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "STATUS: ${record.statusSelisih}",
+                                                color = Color.White,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                    }
+
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                                    ClerekRow("Modal Kasir Awal", formatRupiah(record.modalAwal), isBold = true)
+                                    ClerekRow("Uang Fisik Diinput", formatRupiah(record.uangSetoranFisik), isBold = true, color = RetailNavy)
+                                    ClerekRow("Penjualan Tunai Sistem", formatRupiah(record.totalPenjualanTunai), color = RetailGreen)
+                                    ClerekRow("Penjualan Non-Tunai Sistem", formatRupiah(record.totalPenjualanNonTunai))
+                                    ClerekRow("Total Penjualan Shift", formatRupiah(record.totalPenjualan), isBold = true)
+                                    ClerekRow("Total Donasi", formatRupiah(record.totalDonasi))
+                                    ClerekRow("Jumlah Transaksi", "${record.jumlahTransaksi} transaksi")
+
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                                    val uangSeharusnya = record.modalAwal + record.totalPenjualanTunai + record.totalDonasi
+                                    ClerekRow("Uang Fisik Seharusnya (Modal + Tunai)", formatRupiah(uangSeharusnya), isBold = true)
+                                    ClerekRow(
+                                        label = when {
+                                            record.selisih > 0 -> "Selisih Lebih (+)"
+                                            record.selisih < 0 -> "Selisih Kurang (-)"
+                                            else -> "Selisih (Pas)"
+                                        },
+                                        value = formatRupiah(record.selisih),
+                                        isBold = true,
+                                        color = when {
+                                            record.selisih > 0 -> RetailNavy
+                                            record.selisih < 0 -> RetailRedPrimary
+                                            else -> RetailGreen
+                                        }
+                                    )
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                val slipText = buildString {
+                                                    appendLine("========================================")
+                                                    appendLine("      BUKTI CLEREK SETORAN KASIR        ")
+                                                    appendLine("----------------------------------------")
+                                                    appendLine("Tanggal     : ${record.tanggal}")
+                                                    appendLine("Kasir       : ${record.kasirNama.ifBlank { currentCashier?.nama ?: "Kasir" }} (${record.kasirNik})")
+                                                    appendLine("Shift       : ${record.shift}")
+                                                    appendLine("Modal Awal  : ${formatRupiah(record.modalAwal)}")
+                                                    appendLine("----------------------------------------")
+                                                    appendLine("Total Jual  : ${formatRupiah(record.totalPenjualan)}")
+                                                    appendLine("Tunai Sistem: ${formatRupiah(record.totalPenjualanTunai)}")
+                                                    appendLine("Non-Tunai   : ${formatRupiah(record.totalPenjualanNonTunai)}")
+                                                    appendLine("Total Donasi: ${formatRupiah(record.totalDonasi)}")
+                                                    appendLine("----------------------------------------")
+                                                    appendLine("Uang Fisik  : ${formatRupiah(record.uangSetoranFisik)}")
+                                                    appendLine("Seharusnya  : ${formatRupiah(uangSeharusnya)}")
+                                                    appendLine("Selisih     : ${formatRupiah(record.selisih)}")
+                                                    appendLine("Status      : ${record.statusSelisih}")
+                                                    appendLine("========================================")
+                                                }
+                                                val saved = DocExportManager.saveDocument(
+                                                    context = context,
+                                                    subfolder = "Clerek",
+                                                    prefix = "Clerek_${record.kasirNik}_${record.tanggal.replace("-", "").replace(" ", "_").replace(":", "")}",
+                                                    extension = "txt",
+                                                    content = slipText
+                                                )
+                                                saveDocMessage = "Tersimpan di DodolanPro/Clerek/${saved.second.name}"
+                                            },
+                                            modifier = Modifier.weight(1f).height(42.dp)
+                                        ) {
+                                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("SIMPAN FILE", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+
+                                        Button(
+                                            onClick = onNavigateBack,
+                                            modifier = Modifier.weight(1f).height(42.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = RetailNavy)
+                                        ) {
+                                            Icon(Icons.Default.ArrowBack, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("KEMBALI KE KASIR", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+
+                                    if (saveDocMessage.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(saveDocMessage, fontSize = 11.sp, color = RetailGreen, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        } else if (!isShiftOpen) {
                             // Tampilan jika shift kasir sudah ditutup / sudah di-clerek
                             Card(
                                 modifier = Modifier
@@ -260,68 +405,81 @@ fun ClerekScreen(
                                 Spacer(modifier = Modifier.height(10.dp))
                             }
 
+                            // Anti-Fraud Blind Balancing Info
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4F8)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Icon(
+                                        Icons.Default.Security,
+                                        contentDescription = null,
+                                        tint = RetailNavy,
+                                        modifier = Modifier.size(24.dp).padding(top = 2.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            "CLEREK TERTUTUP (ANTI-FRAUD / BLIND BALANCING)",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = RetailNavy
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            "Untuk meminimalisir kecurangan, masukkan modal awal dan hitung seluruh uang fisik tunai yang ada di laci kasir secara independen tanpa melihat angka sistem. Hasil rekonsiliasi dan selisih akan otomatis dihitung dan ditampilkan setelah proses disimpan.",
+                                            fontSize = 11.sp,
+                                            color = Color.DarkGray,
+                                            lineHeight = 15.sp
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
                             // Input Card
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(containerColor = Color.White),
                                 border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder)
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text("Input Uang Setoran Kasir:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.Black)
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Text("Input Uang Fisik Kasir:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.Black)
 
-                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
 
                                     OutlinedTextField(
                                         value = modalKasirInput,
                                         onValueChange = { modalKasirInput = it },
                                         modifier = Modifier.fillMaxWidth(),
                                         label = { Text("Uang Modal Kasir (Awal)") },
+                                        placeholder = { Text("Contoh: 100000") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         singleLine = true
                                     )
 
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(10.dp))
 
                                     OutlinedTextField(
                                         value = uangSetoranFisikInput,
                                         onValueChange = { uangSetoranFisikInput = it },
                                         modifier = Modifier.fillMaxWidth().testTag("input_setoran_fisik"),
-                                        label = { Text("Jumlah Uang Setoran Fisik (Tunai Dihitung)") },
-                                        placeholder = { Text("Ketik hasil hitung uang tunai fisik...") },
+                                        label = { Text("Jumlah Uang Fisik yang Ada (Hitung Fisik Laci)") },
+                                        placeholder = { Text("Ketik total uang tunai fisik yang ada di laci...") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         singleLine = true
                                     )
-                                }
-                            }
 
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            // Clerek Calculation Breakdown
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = Color.White),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder)
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text("RINGKASAN SISTEM (HARI INI):", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = RetailNavy)
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    ClerekRow("Total Jual Umum", formatRupiah(liveTotalJual), isBold = true)
-                                    ClerekRow("Uang Tunai (Sistem)", formatRupiah(liveTunai), color = RetailGreen)
-                                    ClerekRow("Total Non-Tunai", formatRupiah(liveNonTunai))
-                                    ClerekRow("  • Card / EDC", formatRupiah(liveCard))
-                                    ClerekRow("  • E-Wallet / QRIS", formatRupiah(liveWallet))
-                                    ClerekRow("  • Potongan Voucher", formatRupiah(liveVoucher))
-
-                                    HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
-
-                                    ClerekRow("Uang Setoran Fisik", formatRupiah(numericSetoranFisik), isBold = true)
-                                    ClerekRow(
-                                        label = if (liveSelisih >= 0) "Selisih Lebih (+)" else "Selisih Kurang (-)",
-                                        value = formatRupiah(liveSelisih),
-                                        isBold = true,
-                                        color = if (liveSelisih == 0.0) RetailGreen else if (liveSelisih > 0) RetailNavy else Color.Black
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        "*Hitung seluruh uang kertas dan koin yang ada di cash drawer saat ini.",
+                                        fontSize = 10.sp,
+                                        color = GrayText
                                     )
                                 }
                             }
@@ -329,7 +487,7 @@ fun ClerekScreen(
                             if (feedbackMessage.isNotEmpty()) {
                                 Text(
                                     feedbackMessage,
-                                    color = RetailGreen,
+                                    color = if (feedbackMessage.contains("berhasil", ignoreCase = true)) RetailGreen else RetailRedPrimary,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
                                     modifier = Modifier.padding(vertical = 8.dp)
@@ -345,10 +503,15 @@ fun ClerekScreen(
                                         feedbackMessage = "Tidak bisa clerek! Masih ada transaksi pending."
                                         return@Button
                                     }
-                                    val modal = modalKasirInput.toDoubleOrNull() ?: 100000.0
-                                    viewModel.submitClerek(modal, numericSetoranFisik) { record ->
+                                    if (uangSetoranFisikInput.isBlank()) {
+                                        feedbackMessage = "Harap masukkan jumlah uang fisik yang ada di laci kasir!"
+                                        return@Button
+                                    }
+                                    val modal = modalKasirInput.toDoubleOrNull() ?: 0.0
+                                    val numericFisik = uangSetoranFisikInput.toDoubleOrNull() ?: 0.0
+                                    viewModel.submitClerek(modal, numericFisik) { record ->
                                         lastSettledRecord = record
-                                        feedbackMessage = "Clerek berhasil diproses! Shift kasir resmi ditutup."
+                                        feedbackMessage = "Clerek berhasil diproses! Hasil rekonsiliasi ditampilkan."
                                         uangSetoranFisikInput = ""
                                     }
                                 },
@@ -359,7 +522,7 @@ fun ClerekScreen(
                             ) {
                                 Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.White)
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("SIMPAN & CETAK KLEREK SETORAN", fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("PROSES & LIHAT HASIL CLEREK", fontWeight = FontWeight.Bold, color = Color.White)
                             }
                         }
                     }

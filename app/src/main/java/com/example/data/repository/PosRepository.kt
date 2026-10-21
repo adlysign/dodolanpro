@@ -239,8 +239,10 @@ class PosRepository(private val dao: PosDao) {
             else -> "PAS"
         }
 
+        val kasirObj = dao.getCashierByNik(kasirNik)
         val record = ClerekEntity(
             kasirNik = kasirNik,
+            kasirNama = kasirObj?.nama ?: "Kasir",
             shiftNumber = shiftNum,
             modalAwal = modalKasir,
             totalPenjualanTunai = totalTunai,

@@ -241,14 +241,21 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     val currentDestination: StateFlow<PosNavDestination> = _currentDestination.asStateFlow()
 
     fun hasPermissionForDestination(dest: PosNavDestination): Boolean {
+        if (dest == PosNavDestination.KASIR) return true
         val cashier = _currentCashier.value ?: return false
         if (cashier.isOwner()) return true
+        if (dest == PosNavDestination.CLEREK) {
+            return cashier.canClerekKasir
+        }
+        // Seluruh menu SIS membutuhkan izin dasar canAccessSis
+        if (!cashier.canAccessSis) return false
+
         return when (dest) {
             PosNavDestination.KASIR -> true
             PosNavDestination.SIS_DASHBOARD -> cashier.canAccessSis
             PosNavDestination.PRODUK -> cashier.canManageProduk
             PosNavDestination.CETAK_LABEL_HARGA -> cashier.canCetakLabelRak
-            PosNavDestination.PENJUALAN -> cashier.canViewLaporan || cashier.isAdmin() || cashier.isSupervisor()
+            PosNavDestination.PENJUALAN -> cashier.canViewLaporan || cashier.isAdmin()
             PosNavDestination.PEMBELIAN -> cashier.canManagePembelian
             PosNavDestination.RETUR_PEMBELIAN -> cashier.canReturPembelian
             PosNavDestination.STOK_OPNAME -> cashier.canStockOpname
@@ -258,7 +265,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             PosNavDestination.PENGATURAN_MEMBER -> cashier.canManageMember
             PosNavDestination.VOUCHER_POIN -> cashier.canManageVoucher
             PosNavDestination.KARYAWAN -> cashier.canManageKaryawan
-            PosNavDestination.PENGATURAN_SHIFT -> cashier.canBukaTutupShift || cashier.canManageSettings
+            PosNavDestination.PENGATURAN_SHIFT -> cashier.canManageShift
             PosNavDestination.PENGATURAN_PRINTER -> cashier.canManageSettings
             PosNavDestination.EDIT_TOKO -> cashier.canManageSettings
             PosNavDestination.BACKUP_RESTORE -> cashier.canBackupRestore
@@ -267,8 +274,12 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun navigateTo(dest: PosNavDestination) {
+        if (dest == PosNavDestination.KASIR) {
+            _currentDestination.value = dest
+            return
+        }
         val cashier = _currentCashier.value
-        if (cashier != null && !cashier.isOwner() && !hasPermissionForDestination(dest)) {
+        if (cashier == null || (!cashier.isOwner() && !hasPermissionForDestination(dest))) {
             return
         }
         _currentDestination.value = dest
@@ -361,7 +372,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
 
     // Store Config
     val storeConfig: StateFlow<StoreConfigEntity> = repository.storeConfig
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), StoreConfigEntity())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, StoreConfigEntity())
 
     // Products & Transactions
     val allProducts: StateFlow<List<ProductEntity>> = repository.allProducts
@@ -2171,8 +2182,10 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 licenseType = tierOrMsg,
                 licenseExpiryDate = "LIFETIME"
             )
-            updateStoreConfig(updated)
-            onComplete(true, "Selamat! Lisensi $tierOrMsg berhasil diaktifkan.")
+            viewModelScope.launch {
+                repository.updateStoreConfig(updated)
+                onComplete(true, "Selamat! Lisensi $tierOrMsg berhasil diaktifkan.")
+            }
         } else {
             onComplete(false, tierOrMsg)
         }
@@ -2190,8 +2203,10 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             licenseType = "TRIAL",
             licenseExpiryDate = "TRIAL"
         )
-        updateStoreConfig(updated)
-        onComplete()
+        viewModelScope.launch {
+            repository.updateStoreConfig(updated)
+            onComplete()
+        }
     }
 
     fun restoreBackup(jsonContent: String, onDone: (Boolean) -> Unit) {

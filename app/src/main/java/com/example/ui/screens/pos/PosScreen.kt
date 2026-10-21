@@ -122,6 +122,17 @@ fun PosScreen(
         }
     }
 
+    val handleCancelTransaction = {
+        val canCancel = currentCashier?.isOwner() == true || currentCashier?.canCancelTransaksi == true
+        if (!canCancel) {
+            feedbackMessage = "Akses Ditolak: Anda tidak memiliki wewenang untuk membatalkan transaksi (F4). Hubungi Supervisor/Owner!"
+        } else if (cartItems.isEmpty()) {
+            feedbackMessage = "Keranjang belanja masih kosong."
+        } else {
+            showCancelDialog = true
+        }
+    }
+
     LaunchedEffect(Unit) {
         try {
             rootFocusRequester.requestFocus()
@@ -136,9 +147,7 @@ fun PosScreen(
                     } else showLovDialog = true
                 }
                 PosShortcutEvent.F3_MEMBER -> showMemberDialog = true
-                PosShortcutEvent.F4_BATAL -> {
-                    if (cartItems.isNotEmpty()) showCancelDialog = true
-                }
+                PosShortcutEvent.F4_BATAL -> handleCancelTransaction()
                 PosShortcutEvent.F5_PENDING -> {
                     if (cartItems.isNotEmpty()) showPendingLabelDialog = true
                 }
@@ -458,7 +467,7 @@ fun PosScreen(
                                 true
                             }
                             Key.F4 -> {
-                                if (cartItems.isNotEmpty()) showCancelDialog = true
+                                handleCancelTransaction()
                                 true
                             }
                             Key.F5 -> {
@@ -548,7 +557,7 @@ fun PosScreen(
                             isShiftOpen = isShiftOpen,
                             shiftNumber = activeShift,
                             shiftModal = shiftModalAwal,
-                            onShiftClick = { showBukaShiftDialog = true }
+                            onShiftClick = { if (!isShiftOpen) showBukaShiftDialog = true }
                         )
 
                         Spacer(modifier = Modifier.height(6.dp))
@@ -641,9 +650,7 @@ fun PosScreen(
                                 }
                             },
                             onF3Member = { showMemberDialog = true },
-                            onF4Batal = {
-                                if (cartItems.isNotEmpty()) showCancelDialog = true
-                            },
+                            onF4Batal = { handleCancelTransaction() },
                             onF5Pending = {
                                 if (cartItems.isEmpty()) {
                                     feedbackMessage = "Keranjang masih kosong, tidak bisa dipending!"
@@ -755,7 +762,7 @@ fun PosScreen(
                         shiftNumber = activeShift,
                         shiftModal = shiftModalAwal,
                         isCompact = true,
-                        onShiftClick = { showBukaShiftDialog = true }
+                        onShiftClick = { if (!isShiftOpen) showBukaShiftDialog = true }
                     )
 
                     Spacer(modifier = Modifier.height(6.dp))
@@ -876,9 +883,7 @@ fun PosScreen(
                             } else showLovDialog = true
                         },
                         onF3Member = { showMemberDialog = true },
-                        onF4Batal = {
-                            if (cartItems.isNotEmpty()) showCancelDialog = true
-                        },
+                        onF4Batal = { handleCancelTransaction() },
                         onF5Pending = {
                             if (cartItems.isEmpty()) {
                                 feedbackMessage = "Keranjang kosong!"
@@ -1071,57 +1076,80 @@ fun PosScreen(
                         color = DarkText,
                         lineHeight = 16.sp
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        "Untuk melanjutkan transaksi pelanggan tanpa batas, silakan masukkan lisensi PRO LIFETIME atau ENTERPRISE:",
-                        fontSize = 11.sp,
-                        color = GrayText
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    OutlinedTextField(
-                        value = trialLicenseInput,
-                        onValueChange = { trialLicenseInput = it.uppercase() },
-                        label = { Text("Kode Lisensi") },
-                        placeholder = { Text("PRO-... atau ENT-...") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("input_trial_license_key")
-                    )
-
-                    if (trialLicenseError.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(6.dp))
+                    val isOwner = currentCashier?.isOwner() == true
+                    if (isOwner) {
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            trialLicenseError,
-                            color = RetailRedPrimary,
+                            "Untuk melanjutkan transaksi pelanggan tanpa batas, silakan masukkan lisensi PRO LIFETIME atau ENTERPRISE:",
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
+                            color = GrayText
                         )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        OutlinedTextField(
+                            value = trialLicenseInput,
+                            onValueChange = { trialLicenseInput = it.uppercase() },
+                            label = { Text("Kode Lisensi") },
+                            placeholder = { Text("PRO-... atau ENT-...") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("input_trial_license_key")
+                        )
+
+                        if (trialLicenseError.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                trialLicenseError,
+                                color = RetailRedPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFFFF8E1),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFE082)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFFF57F17), modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "Batas uji coba 50 transaksi tercapai. Hanya akun Pemilik Toko (Owner) yang berwenang memasukkan kode lisensi. Silakan hubungi Owner toko.",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF5D4037)
+                                )
+                            }
+                        }
                     }
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        if (trialLicenseInput.isBlank()) {
-                            trialLicenseError = "Masukkan kode lisensi terlebih dahulu."
-                            return@Button
-                        }
-                        viewModel.activateOrUpgradeLicense(trialLicenseInput) { ok, msg ->
-                            if (ok) {
-                                showTrialLimitDialog = false
-                                trialLicenseError = ""
-                                trialLicenseInput = ""
-                                feedbackMessage = msg
-                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                            } else {
-                                trialLicenseError = msg
+                if (currentCashier?.isOwner() == true) {
+                    Button(
+                        onClick = {
+                            if (trialLicenseInput.isBlank()) {
+                                trialLicenseError = "Masukkan kode lisensi terlebih dahulu."
+                                return@Button
                             }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = RetailGreen)
-                ) {
-                    Text("AKTIFKAN LISENSI")
+                            viewModel.activateOrUpgradeLicense(trialLicenseInput) { ok, msg ->
+                                if (ok) {
+                                    showTrialLimitDialog = false
+                                    trialLicenseError = ""
+                                    trialLicenseInput = ""
+                                    feedbackMessage = msg
+                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                } else {
+                                    trialLicenseError = msg
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = RetailGreen)
+                    ) {
+                        Text("AKTIFKAN LISENSI")
+                    }
                 }
             },
             dismissButton = {
@@ -1547,10 +1575,16 @@ fun PosScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.clearCart()
-                        selectedCartIndex = null
-                        showCancelDialog = false
-                        feedbackMessage = "Seluruh transaksi dibatalkan / keranjang dikosongkan"
+                        val canCancel = currentCashier?.isOwner() == true || currentCashier?.canCancelTransaksi == true
+                        if (canCancel) {
+                            viewModel.clearCart()
+                            selectedCartIndex = null
+                            showCancelDialog = false
+                            feedbackMessage = "Seluruh transaksi dibatalkan / keranjang dikosongkan"
+                        } else {
+                            showCancelDialog = false
+                            feedbackMessage = "Akses Ditolak: Anda tidak memiliki hak akses membatalkan transaksi!"
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = RetailRedPrimary)
                 ) {
@@ -1963,8 +1997,9 @@ fun TerminalHeaderBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val shiftClickModifier = if (!isShiftOpen) Modifier.clickable { onShiftClick() } else Modifier
             Column(
-                modifier = Modifier.clickable { onShiftClick() }
+                modifier = shiftClickModifier
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -1978,10 +2013,10 @@ fun TerminalHeaderBar(
                     Surface(
                         color = if (isShiftOpen) RetailGreen else Color(0xFFD32F2F),
                         shape = RoundedCornerShape(3.dp),
-                        modifier = Modifier.clickable { onShiftClick() }
+                        modifier = shiftClickModifier
                     ) {
                         Text(
-                            if (isShiftOpen) "SHIFT $shiftNumber" else "SHIFT TERTUTUP (BUKA)",
+                            if (isShiftOpen) "SHIFT $shiftNumber (AKTIF)" else "SHIFT TERTUTUP (BUKA)",
                             color = Color.White,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
