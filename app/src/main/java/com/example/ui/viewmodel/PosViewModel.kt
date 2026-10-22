@@ -1115,6 +1115,59 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         savePendingCartsToStorage(updated)
     }
 
+    fun deletePendingCartWithApproval(
+        pendingId: String,
+        otp: String,
+        reason: String,
+        onComplete: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val trimmed = otp.trim()
+            if (trimmed.isEmpty()) {
+                onComplete(false, "PIN / Password otorisasi tidak boleh kosong!")
+                return@launch
+            }
+
+            val cashiers = try {
+                repository.getAllCashiersList()
+            } catch (e: Exception) {
+                allCashiers.value
+            }
+
+            val authorizedStaff = cashiers.find { it.pin.trim() == trimmed && it.statusAktif }
+            val isAuthorized: Pair<Boolean, String> = when {
+                authorizedStaff == null -> {
+                    if (trimmed == "1234" && (cashiers.isEmpty() || cashiers.any { it.isOwner() && it.pin.trim() == "1234" })) {
+                        Pair(true, "Owner (Default)")
+                    } else {
+                        Pair(false, "PIN otorisasi salah! Anda tidak memiliki wewenang untuk tindakan ini.")
+                    }
+                }
+                authorizedStaff.isOwner() || authorizedStaff.isAdmin() -> {
+                    Pair(true, "${authorizedStaff.role} (${authorizedStaff.nama})")
+                }
+                authorizedStaff.isSupervisor() -> {
+                    Pair(true, "Supervisor (${authorizedStaff.nama})")
+                }
+                else -> {
+                    Pair(false, "Akses Ditolak: Karyawan '${authorizedStaff.nama}' (${authorizedStaff.role}) bukan Supervisor/Owner dan tidak dapat menyetujui penghapusan pending.")
+                }
+            }
+
+            if (!isAuthorized.first) {
+                onComplete(false, isAuthorized.second)
+                return@launch
+            }
+
+            val target = _pendingCarts.value.firstOrNull { it.id == pendingId }
+            val updated = _pendingCarts.value.filter { it.id != pendingId }
+            _pendingCarts.value = updated
+            savePendingCartsToStorage(updated)
+            val labelStr = target?.label ?: pendingId
+            onComplete(true, "Pending '$labelStr' berhasil dihapus dengan persetujuan ${isAuthorized.second}. Alasan: $reason")
+        }
+    }
+
     fun restorePendingCart(pendingId: String) {
         resumePendingCart(pendingId)
     }

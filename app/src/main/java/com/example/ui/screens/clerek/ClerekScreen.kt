@@ -47,7 +47,6 @@ fun ClerekScreen(
     val activeShift by viewModel.activeShift.collectAsState()
     val shiftModalAwal by viewModel.shiftModalAwal.collectAsState()
 
-    var modalKasirInput by remember(shiftModalAwal) { mutableStateOf(shiftModalAwal.toLong().toString()) }
     var uangSetoranFisikInput by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf(0) }
     var lastSettledRecord by remember { mutableStateOf<ClerekEntity?>(null) }
@@ -431,7 +430,7 @@ fun ClerekScreen(
                                         )
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            "Untuk meminimalisir kecurangan, masukkan modal awal dan hitung seluruh uang fisik tunai yang ada di laci kasir secara independen tanpa melihat angka sistem. Hasil rekonsiliasi dan selisih akan otomatis dihitung dan ditampilkan setelah proses disimpan.",
+                                            "Untuk meminimalisir kecurangan, hitung seluruh uang fisik tunai yang ada di laci kasir secara independen tanpa melihat angka sistem. Modal awal kasir (${formatRupiah(shiftModalAwal)}) sudah otomatis tercatat saat Buka Shift. Hasil rekonsiliasi dan selisih akan otomatis dihitung dan ditampilkan setelah proses disimpan.",
                                             fontSize = 11.sp,
                                             color = Color.DarkGray,
                                             lineHeight = 15.sp
@@ -453,17 +452,51 @@ fun ClerekScreen(
 
                                     Spacer(modifier = Modifier.height(8.dp))
 
-                                    OutlinedTextField(
-                                        value = modalKasirInput,
-                                        onValueChange = { modalKasirInput = it },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        label = { Text("Uang Modal Kasir (Awal)") },
-                                        placeholder = { Text("Contoh: 100000") },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        singleLine = true
-                                    )
+                                    // Info Box: Modal Awal Kasir Otomatis dari Buka Shift
+                                    Surface(
+                                        color = Color(0xFFF1F5F9),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    Icons.Default.AccountBalanceWallet,
+                                                    contentDescription = null,
+                                                    tint = RetailNavy,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Column {
+                                                    Text(
+                                                        "Modal Awal Kasir (Shift #$activeShift)",
+                                                        fontSize = 11.sp,
+                                                        color = Color(0xFF64748B),
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                    Text(
+                                                        "Tercatat otomatis saat Buka Shift",
+                                                        fontSize = 10.sp,
+                                                        color = RetailGreen,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                formatRupiah(shiftModalAwal),
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = RetailNavy
+                                            )
+                                        }
+                                    }
 
-                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
 
                                     OutlinedTextField(
                                         value = uangSetoranFisikInput,
@@ -477,7 +510,7 @@ fun ClerekScreen(
 
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        "*Hitung seluruh uang kertas dan koin yang ada di cash drawer saat ini.",
+                                        "*Hitung seluruh uang kertas dan koin yang ada di cash drawer saat ini. Modal kasir sudah otomatis diperhitungkan oleh sistem.",
                                         fontSize = 10.sp,
                                         color = GrayText
                                     )
@@ -507,9 +540,8 @@ fun ClerekScreen(
                                         feedbackMessage = "Harap masukkan jumlah uang fisik yang ada di laci kasir!"
                                         return@Button
                                     }
-                                    val modal = modalKasirInput.toDoubleOrNull() ?: 0.0
                                     val numericFisik = uangSetoranFisikInput.toDoubleOrNull() ?: 0.0
-                                    viewModel.submitClerek(modal, numericFisik) { record ->
+                                    viewModel.submitClerek(numericFisik) { record ->
                                         lastSettledRecord = record
                                         feedbackMessage = "Clerek berhasil diproses! Hasil rekonsiliasi ditampilkan."
                                         uangSetoranFisikInput = ""

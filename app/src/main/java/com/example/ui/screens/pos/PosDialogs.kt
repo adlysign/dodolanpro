@@ -445,14 +445,225 @@ fun PendingLabelDialog(
     }
 }
 
-// --- 3. Recall Pending List Dialog ---
+// --- 3. Recall Pending List Dialog with Mandatory Supervisor Approval for Delete ---
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DeletePendingApprovalDialog(
+    cart: PendingCart,
+    onDismiss: () -> Unit,
+    onConfirmDelete: (pin: String, reason: String, onError: (String) -> Unit) -> Unit
+) {
+    var otpCode by remember { mutableStateOf("") }
+    var reason by remember { mutableStateOf("Konsumen Batal / Tidak Kembali") }
+    var errorMessage by remember { mutableStateOf("") }
+    var isPasswordVisible by remember { mutableStateOf(false) }
+
+    val reasons = listOf(
+        "Konsumen Batal / Tidak Kembali",
+        "Antrian Dobel / Salah Input",
+        "Barang Batal / Rusak",
+        "Lainnya"
+    )
+
+    val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(cart.timestamp))
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .imePadding()
+                .testTag("dialog_delete_pending_approval"),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp)
+            ) {
+                // Header
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(RetailRedPrimary, RoundedCornerShape(6.dp))
+                        .padding(10.dp)
+                ) {
+                    Text(
+                        "OTORISASI PERSETUJUAN: HAPUS PENDING",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Security notice banner (Kasir dilarang hapus tanpa persetujuan)
+                Surface(
+                    color = Color(0xFFFFF3E0),
+                    shape = RoundedCornerShape(6.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFB74D)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Security,
+                            contentDescription = null,
+                            tint = Color(0xFFE65100),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Kasir TIDAK DAPAT menghapus transaksi pending tanpa persetujuan Supervisor / Owner / Admin.",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFBF360C),
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Info card for pending transaction
+                Surface(
+                    color = Color(0xFFF8FAFC),
+                    shape = RoundedCornerShape(8.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Antrian: ${cart.label}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.Black)
+                            Text("Waktu: $timeStr", fontSize = 11.sp, color = Color.Gray)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Total: ${cart.items.size} item | Nilai: ${formatRupiah(cart.totalAmount)}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = RetailNavy
+                        )
+                        if (cart.member != null) {
+                            Text("Member: ${cart.member.nama}", fontSize = 11.sp, color = RetailGreen)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val itemsSummary = cart.items.take(3).joinToString(", ") { "${it.product.nama} (${it.qty})" } +
+                                if (cart.items.size > 3) " +${cart.items.size - 3} lainnya" else ""
+                        Text("Barang: $itemsSummary", fontSize = 10.sp, color = Color.DarkGray, maxLines = 2)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text("Alasan Pembatalan / Hapus:", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color.Black)
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    reasons.take(2).forEach { r ->
+                        FilterChip(
+                            selected = reason == r,
+                            onClick = { reason = r },
+                            label = { Text(r, fontSize = 10.sp) }
+                        )
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    reasons.drop(2).forEach { r ->
+                        FilterChip(
+                            selected = reason == r,
+                            onClick = { reason = r },
+                            label = { Text(r, fontSize = 10.sp) }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text("PIN Otorisasi (Supervisor / Owner / Admin):", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color.Black)
+                OutlinedTextField(
+                    value = otpCode,
+                    onValueChange = {
+                        otpCode = it
+                        if (errorMessage.isNotEmpty()) errorMessage = ""
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("pin_delete_pending_input"),
+                    placeholder = { Text("Masukkan PIN Supervisor / Owner...") },
+                    visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                            Icon(
+                                if (isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = if (isPasswordVisible) "Sembunyikan" else "Tampilkan",
+                                tint = Color.Gray
+                            )
+                        }
+                    },
+                    singleLine = true
+                )
+
+                if (errorMessage.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        color = Color(0xFFFFEBEE),
+                        shape = RoundedCornerShape(4.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFCDD2)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = RetailRedPrimary, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(errorMessage, color = RetailRedPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                        Text("BATAL")
+                    }
+                    Button(
+                        onClick = {
+                            onConfirmDelete(otpCode, reason) { err ->
+                                errorMessage = err
+                            }
+                        },
+                        enabled = otpCode.isNotBlank(),
+                        modifier = Modifier.weight(1.2f).testTag("btn_confirm_delete_pending"),
+                        colors = ButtonDefaults.buttonColors(containerColor = RetailRedPrimary, contentColor = Color.White)
+                    ) {
+                        Text("SETUJUI & HAPUS", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun RecallPendingDialog(
     pendingCarts: List<PendingCart>,
     onResumeCart: (id: String) -> Unit,
-    onDeleteCart: (id: String) -> Unit,
+    onDeleteCart: (cart: PendingCart, pin: String, reason: String, onError: (String) -> Unit) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var pendingToDelete by remember { mutableStateOf<PendingCart?>(null) }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
@@ -529,14 +740,14 @@ fun RecallPendingDialog(
 
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                         OutlinedButton(
-                                            onClick = { onDeleteCart(cart.id) },
+                                            onClick = { pendingToDelete = cart },
                                             colors = ButtonDefaults.outlinedButtonColors(contentColor = RetailRedPrimary),
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                             modifier = Modifier.height(32.dp).padding(end = 6.dp)
                                         ) {
                                             Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Hapus", fontSize = 11.sp)
+                                            Text("Hapus (Otorisasi)", fontSize = 11.sp)
                                         }
 
                                         Button(
@@ -566,6 +777,22 @@ fun RecallPendingDialog(
                 }
             }
         }
+    }
+
+    if (pendingToDelete != null) {
+        DeletePendingApprovalDialog(
+            cart = pendingToDelete!!,
+            onDismiss = { pendingToDelete = null },
+            onConfirmDelete = { pin, reason, onError ->
+                onDeleteCart(pendingToDelete!!, pin, reason) { err ->
+                    if (err.isEmpty()) {
+                        pendingToDelete = null
+                    } else {
+                        onError(err)
+                    }
+                }
+            }
+        )
     }
 }
 

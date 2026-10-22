@@ -973,9 +973,15 @@ fun PosScreen(
                     feedbackMessage = "Transaksi pending berhasil dipulihkan ke keranjang!"
                 }
             },
-            onDeleteCart = { id ->
-                viewModel.deletePendingCart(id)
-                feedbackMessage = "Transaksi pending dihapus!"
+            onDeleteCart = { cart, pin, reason, onError ->
+                viewModel.deletePendingCartWithApproval(cart.id, pin, reason) { ok, msg ->
+                    feedbackMessage = msg
+                    if (ok) {
+                        onError("")
+                    } else {
+                        onError(msg)
+                    }
+                }
             },
             onDismiss = { showRecallDialog = false }
         )
