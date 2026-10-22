@@ -77,7 +77,7 @@ fun SisDashboardScreen(
             SisMenuItem("Cetak Label Rak", "Label Harga A4/F4 & Rak", Icons.Default.QrCode2, Color(0xFF00897B), PosNavDestination.CETAK_LABEL_HARGA, "menu_cetak_label"),
             SisMenuItem("Riwayat Penjualan", "${allTransactions.size} Transaksi Tersimpan", Icons.Default.ReceiptLong, Color(0xFF1E88E5), PosNavDestination.PENJUALAN, "menu_penjualan"),
             SisMenuItem("Pembelian Barang", "Input Pembelian dari Supplier", Icons.Default.ShoppingBag, Color(0xFFFB8C00), PosNavDestination.PEMBELIAN, "menu_pembelian"),
-            SisMenuItem("Retur Pembelian", "Pengembalian Barang ke Supplier", Icons.Default.AssignmentReturn, Color(0xFFE53935), PosNavDestination.RETUR_PEMBELIAN, "menu_retur_pembelian"),
+            SisMenuItem("Retur", "Retur Penjualan & Retur Pembelian", Icons.Default.AssignmentReturn, Color(0xFFE53935), PosNavDestination.RETUR_PEMBELIAN, "menu_retur"),
             SisMenuItem("Stok Opname", "Penyesuaian & Koreksi Fisik", Icons.Default.FactCheck, Color(0xFF6D4C41), PosNavDestination.STOK_OPNAME, "menu_stok_opname"),
             SisMenuItem("Clerek Kasir", "Cek Setoran Kasir & Kas", Icons.Default.AccountBalanceWallet, Color(0xFF43A047), PosNavDestination.CLEREK, "menu_clerek"),
             SisMenuItem("Laporan Lengkap", "Laporan Kasir, Harian & SIS", Icons.Default.BarChart, Color(0xFF3949AB), PosNavDestination.LAPORAN_TOKO, "menu_laporan"),

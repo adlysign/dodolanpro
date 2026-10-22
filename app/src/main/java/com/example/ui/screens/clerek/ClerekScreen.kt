@@ -77,7 +77,7 @@ fun ClerekScreen(
     }
 
     val numericSetoranFisik = uangSetoranFisikInput.toDoubleOrNull() ?: 0.0
-    val liveSelisih = numericSetoranFisik - liveTunai
+    val liveSelisih = numericSetoranFisik - (shiftModalAwal + liveTunai)
 
     val hasPending = pendingCarts.isNotEmpty()
 
@@ -215,8 +215,8 @@ fun ClerekScreen(
 
                                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                                    ClerekRow("Modal Kasir Awal", formatRupiah(record.modalAwal), isBold = true)
-                                    ClerekRow("Uang Fisik Diinput", formatRupiah(record.uangSetoranFisik), isBold = true, color = RetailNavy)
+                                    ClerekRow("Modal Kasir Awal (Otomatis Buka Shift)", formatRupiah(record.modalAwal), isBold = true)
+                                    ClerekRow("Total Uang Fisik Diinput", formatRupiah(record.uangSetoranFisik), isBold = true, color = RetailNavy)
                                     ClerekRow("Penjualan Tunai Sistem", formatRupiah(record.totalPenjualanTunai), color = RetailGreen)
                                     ClerekRow("Penjualan Non-Tunai Sistem", formatRupiah(record.totalPenjualanNonTunai))
                                     ClerekRow("Total Penjualan Shift", formatRupiah(record.totalPenjualan), isBold = true)
@@ -226,7 +226,7 @@ fun ClerekScreen(
                                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                                     val uangSeharusnya = record.modalAwal + record.totalPenjualanTunai + record.totalDonasi
-                                    ClerekRow("Uang Fisik Seharusnya (Modal + Tunai)", formatRupiah(uangSeharusnya), isBold = true)
+                                    ClerekRow("Uang Fisik Seharusnya di Laci (Modal + Tunai)", formatRupiah(uangSeharusnya), isBold = true)
                                     ClerekRow(
                                         label = when {
                                             record.selisih > 0 -> "Selisih Lebih (+)"
@@ -430,7 +430,7 @@ fun ClerekScreen(
                                         )
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            "Untuk meminimalisir kecurangan, hitung seluruh uang fisik tunai yang ada di laci kasir secara independen tanpa melihat angka sistem. Modal awal kasir (${formatRupiah(shiftModalAwal)}) sudah otomatis tercatat saat Buka Shift. Hasil rekonsiliasi dan selisih akan otomatis dihitung dan ditampilkan setelah proses disimpan.",
+                                            "Hitung seluruh uang fisik tunai yang ada di laci kasir secara mandiri tanpa melihat angka sistem. Modal awal kasir (${formatRupiah(shiftModalAwal)}) sudah otomatis tercatat saat Buka Shift. Kasir HANYA memasukkan jumlah uang fisik di laci saja tanpa memasukkan modal, karena modal sudah otomatis tercatat oleh sistem. Hasil rekonsiliasi dan selisih akan otomatis dihitung dan ditampilkan setelah proses disimpan.",
                                             fontSize = 11.sp,
                                             color = Color.DarkGray,
                                             lineHeight = 15.sp
@@ -448,7 +448,7 @@ fun ClerekScreen(
                                 border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder)
                             ) {
                                 Column(modifier = Modifier.padding(14.dp)) {
-                                    Text("Input Uang Fisik Kasir:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.Black)
+                                    Text("Input Jumlah Uang Fisik Kasir (Hasil Hitung Laci):", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.Black)
 
                                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -480,7 +480,7 @@ fun ClerekScreen(
                                                         fontWeight = FontWeight.Medium
                                                     )
                                                     Text(
-                                                        "Tercatat otomatis saat Buka Shift",
+                                                        "Tercatat otomatis saat Buka Shift (tidak perlu diinput lagi)",
                                                         fontSize = 10.sp,
                                                         color = RetailGreen,
                                                         fontWeight = FontWeight.Bold
@@ -500,17 +500,17 @@ fun ClerekScreen(
 
                                     OutlinedTextField(
                                         value = uangSetoranFisikInput,
-                                        onValueChange = { uangSetoranFisikInput = it },
+                                        onValueChange = { uangSetoranFisikInput = it.filter { ch -> ch.isDigit() } },
                                         modifier = Modifier.fillMaxWidth().testTag("input_setoran_fisik"),
-                                        label = { Text("Jumlah Uang Fisik yang Ada (Hitung Fisik Laci)") },
-                                        placeholder = { Text("Ketik total uang tunai fisik yang ada di laci...") },
+                                        label = { Text("Jumlah Total Uang Fisik di Laci Kasir") },
+                                        placeholder = { Text("Ketik total uang tunai yang dihitung di laci...") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         singleLine = true
                                     )
 
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        "*Hitung seluruh uang kertas dan koin yang ada di cash drawer saat ini. Modal kasir sudah otomatis diperhitungkan oleh sistem.",
+                                        "*Kasir hanya memasukkan total uang fisik di laci saja tanpa memasukkan modal, karena modal sudah otomatis tercatat oleh sistem.",
                                         fontSize = 10.sp,
                                         color = GrayText
                                     )

@@ -81,6 +81,11 @@ fun ReturnPurchaseScreen(
     val currentCashier by viewModel.currentCashier.collectAsState()
 
     var selectedTab by remember { mutableStateOf(0) } // 0: Input Retur, 1: Riwayat & Arsip NRB
+    var mainReturMode by remember { mutableStateOf(0) } // 0: Retur Penjualan (Konsumen), 1: Retur Pembelian (Supplier)
+
+    val supplierReturns = remember(allReturns) {
+        allReturns.filter { !it.tipeRetur.equals("KONSUMEN", ignoreCase = true) && !it.jenisRetur.contains("KONSUMEN", ignoreCase = true) }
+    }
 
     // Sumber Retur: Supplier vs Toko Grosir
     var sumberTipe by remember { mutableStateOf(SumberReturTipe.SUPPLIER) }
@@ -187,9 +192,9 @@ fun ReturnPurchaseScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("RETUR PEMBELIAN (NRB)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("MANAJEMEN RETUR", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         Text(
-                            "Pengembalian Barang ke Supplier & Toko Grosir • Potong Stok Otomatis",
+                            "Retur Penjualan Konsumen & Retur Pembelian Supplier",
                             fontSize = 11.sp,
                             color = Color.White.copy(alpha = 0.85f)
                         )
@@ -214,33 +219,71 @@ fun ReturnPurchaseScreen(
                 .padding(innerPadding)
                 .background(PosSurface)
         ) {
-            // Tab Navigation
-            TabRow(selectedTabIndex = selectedTab) {
+            // Tab Utama: Retur Penjualan vs Retur Pembelian
+            TabRow(
+                selectedTabIndex = mainReturMode,
+                containerColor = RetailNavy,
+                contentColor = Color.White
+            ) {
                 Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
+                    selected = mainReturMode == 0,
+                    onClick = { mainReturMode = 0 },
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AssignmentReturn, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.PointOfSale, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("INPUT RETUR PEMBELIAN", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("RETUR PENJUALAN", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
-                    }
+                    },
+                    selectedContentColor = Color.White,
+                    unselectedContentColor = Color.White.copy(alpha = 0.65f)
                 )
                 Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
+                    selected = mainReturMode == 1,
+                    onClick = { mainReturMode = 1 },
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.ShoppingBag, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("RIWAYAT & ARSIP NRB (${allReturns.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("RETUR PEMBELIAN", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
-                    }
+                    },
+                    selectedContentColor = Color.White,
+                    unselectedContentColor = Color.White.copy(alpha = 0.65f)
                 )
             }
 
-            if (selectedTab == 0) {
+            if (mainReturMode == 0) {
+                // MODUL 1: RETUR PENJUALAN KONSUMEN
+                ReturPenjualanView(viewModel = viewModel)
+            } else {
+                // MODUL 2: RETUR PEMBELIAN SUPPLIER / GROSIR
+                TabRow(selectedTabIndex = selectedTab) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.AssignmentReturn, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("INPUT RETUR PEMBELIAN", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("RIWAYAT & ARSIP NRB (${supplierReturns.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    )
+                }
+
+                if (selectedTab == 0) {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1189,9 +1232,9 @@ fun ReturnPurchaseScreen(
                         listOf("SEMUA", "FORM", "FIXED").forEach { st ->
                             val isSel = riwayatStatusFilter == st
                             val count = when (st) {
-                                "FORM" -> allReturns.count { it.status == "FORM" }
-                                "FIXED" -> allReturns.count { it.status == "FIXED" }
-                                else -> allReturns.size
+                                "FORM" -> supplierReturns.count { it.status == "FORM" }
+                                "FIXED" -> supplierReturns.count { it.status == "FIXED" }
+                                else -> supplierReturns.size
                             }
                             FilterChip(
                                 selected = isSel,
@@ -1203,7 +1246,7 @@ fun ReturnPurchaseScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    val filteredReturns = allReturns.filter { ret ->
+                    val filteredReturns = supplierReturns.filter { ret ->
                         val matchSearch = riwayatSearchQuery.isBlank() ||
                                 ret.nrbNo.contains(riwayatSearchQuery, ignoreCase = true) ||
                                 ret.supplierNama.contains(riwayatSearchQuery, ignoreCase = true) ||
@@ -1355,6 +1398,7 @@ fun ReturnPurchaseScreen(
             }
         }
     }
+}
 
     // Modal LOV Produk
     if (showLovDialog) {

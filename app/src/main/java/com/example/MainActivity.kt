@@ -164,7 +164,7 @@ class MainActivity : ComponentActivity() {
                         PosNavDestination.PENJUALAN -> SalesHistoryScreen(
                             viewModel = viewModel,
                             onNavigateBack = { viewModel.navigateTo(PosNavDestination.SIS_DASHBOARD) },
-                            onNavigateToRetur = { viewModel.navigateTo(PosNavDestination.KASIR) }
+                            onNavigateToRetur = { viewModel.navigateTo(PosNavDestination.RETUR_PEMBELIAN) }
                         )
                         PosNavDestination.CETAK_LABEL_HARGA -> PriceTagScreen(
                             viewModel = viewModel,

@@ -345,6 +345,16 @@ class PosRepository(private val dao: PosDao) {
         }
     }
 
+    suspend fun recordCustomerReturn(
+        doc: ReturnDocEntity,
+        itemsToRestock: List<Pair<String, Int>>
+    ) = withContext(Dispatchers.IO) {
+        dao.insertReturnDoc(doc)
+        for ((plu, qty) in itemsToRestock) {
+            dao.addStock(plu, qty)
+        }
+    }
+
     suspend fun finalizeReturnDoc(
         nrbNo: String,
         itemsToDeduct: List<Pair<String, Int>>

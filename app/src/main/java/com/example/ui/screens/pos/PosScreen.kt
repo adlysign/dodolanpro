@@ -111,6 +111,7 @@ fun PosScreen(
     var itemToDelete by remember { mutableStateOf<Pair<Int, CartItem>?>(null) }
     var showKeyboardShortcutsHelp by remember { mutableStateOf(false) }
     var showCancelDialog by remember { mutableStateOf(false) }
+    var showCancelApprovalDialog by remember { mutableStateOf(false) }
     var feedbackMessage by remember { mutableStateOf("") }
     val rootFocusRequester = remember { FocusRequester() }
 
@@ -1384,11 +1385,13 @@ fun PosScreen(
                         if (newQty > 0) {
                             val res = viewModel.updateCartItemQty(index, newQty)
                             feedbackMessage = res.second
+                            itemToEditQty = null
                         } else {
-                            viewModel.removeCartItem(index)
-                            feedbackMessage = "${item.product.nama} dihapus dari keranjang"
+                            itemToEditQty = null
+                            selectedCartIndex = index
+                            showVoidDialog = true
+                            feedbackMessage = "Menghapus item memerlukan otorisasi persetujuan Supervisor/Owner!"
                         }
-                        itemToEditQty = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = RetailNavy, contentColor = Color.White),
                     shape = RoundedCornerShape(6.dp)
@@ -1537,10 +1540,18 @@ fun PosScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.removeCartItem(index)
-                        feedbackMessage = "${item.product.nama} dihapus dari keranjang"
-                        itemToDelete = null
-                        if (selectedCartIndex == index) selectedCartIndex = null
+                        val isSupervisorOrOwner = currentCashier?.isSupervisor() == true || currentCashier?.isOwner() == true || currentCashier?.canVoidItem == true
+                        if (isSupervisorOrOwner) {
+                            viewModel.removeCartItem(index)
+                            feedbackMessage = "${item.product.nama} dihapus dari keranjang"
+                            itemToDelete = null
+                            if (selectedCartIndex == index) selectedCartIndex = null
+                        } else {
+                            itemToDelete = null
+                            selectedCartIndex = index
+                            showVoidDialog = true
+                            feedbackMessage = "Menghapus item memerlukan otorisasi persetujuan Supervisor/Owner!"
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = RetailRedPrimary),
                     modifier = Modifier.testTag("btn_confirm_delete_item")
@@ -1581,15 +1592,16 @@ fun PosScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        val canCancel = currentCashier?.isOwner() == true || currentCashier?.canCancelTransaksi == true
-                        if (canCancel) {
+                        val isSupervisorOrOwner = currentCashier?.isSupervisor() == true || currentCashier?.isOwner() == true
+                        if (cartItems.isEmpty() || isSupervisorOrOwner) {
                             viewModel.clearCart()
                             selectedCartIndex = null
                             showCancelDialog = false
                             feedbackMessage = "Seluruh transaksi dibatalkan / keranjang dikosongkan"
                         } else {
+                            // Kasir memerlukan persetujuan Supervisor untuk membatalkan transaksi berisi barang
                             showCancelDialog = false
-                            feedbackMessage = "Akses Ditolak: Anda tidak memiliki hak akses membatalkan transaksi!"
+                            showCancelApprovalDialog = true
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = RetailRedPrimary)
@@ -1600,6 +1612,86 @@ fun PosScreen(
             dismissButton = {
                 OutlinedButton(onClick = { showCancelDialog = false }) {
                     Text("Kembali", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    if (showCancelApprovalDialog) {
+        var supervisorPin by remember { mutableStateOf("") }
+        var cancelReason by remember { mutableStateOf("Konsumen Batal") }
+        var cancelError by remember { mutableStateOf("") }
+        val cancelReasons = listOf("Konsumen Batal", "Salah Input", "Ganti Metode Bayar", "Lainnya")
+
+        AlertDialog(
+            onDismissRequest = { showCancelApprovalDialog = false },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(12.dp),
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Security, contentDescription = null, tint = RetailRedPrimary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Persetujuan Batal Transaksi", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.Black)
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        "SOP Kasir: Menghapus seluruh item atau membatalkan transaksi memerlukan persetujuan Supervisor / Owner.",
+                        fontSize = 12.sp,
+                        color = Color(0xFFB45309)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("Alasan Pembatalan:", fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = Color.Black)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        cancelReasons.take(2).forEach { r ->
+                            FilterChip(selected = cancelReason == r, onClick = { cancelReason = r }, label = { Text(r, fontSize = 10.sp) })
+                        }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        cancelReasons.drop(2).forEach { r ->
+                            FilterChip(selected = cancelReason == r, onClick = { cancelReason = r }, label = { Text(r, fontSize = 10.sp) })
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = supervisorPin,
+                        onValueChange = { supervisorPin = it; cancelError = "" },
+                        label = { Text("PIN Supervisor / Owner") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (cancelError.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(cancelError, color = RetailRedPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val auth = viewModel.verifyAuthorityPin(supervisorPin) { it.isSupervisor() || it.isOwner() || it.isAdmin() }
+                        if (auth.first) {
+                            viewModel.clearCart()
+                            selectedCartIndex = null
+                            showCancelApprovalDialog = false
+                            feedbackMessage = "Transaksi dibatalkan dengan persetujuan ${auth.second}. Alasan: $cancelReason"
+                        } else {
+                            cancelError = auth.second
+                        }
+                    },
+                    enabled = supervisorPin.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = RetailRedPrimary)
+                ) {
+                    Text("Setujui & Batalkan", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showCancelApprovalDialog = false }) {
+                    Text("Batal", color = Color.Black)
                 }
             }
         )

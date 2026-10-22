@@ -395,5 +395,143 @@ class ExampleRobolectricTest {
     assertEquals("PAS", clerekResult!!.statusSelisih)
     assertEquals(false, vm.isShiftOpen.value) // Shift automatically closed
   }
+
+  @Test
+  fun `test cashier cannot delete pending cart without supervisor approval`() = kotlinx.coroutines.runBlocking {
+    val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val vm = com.example.ui.viewmodel.PosViewModel(app)
+
+    // Save cashier & supervisor
+    val cashierUser = com.example.data.local.entity.CashierUserEntity("K001", "Kasir Siti", "1111", "KASIR")
+    val supervisorUser = com.example.data.local.entity.CashierUserEntity("SPV01", "Supervisor Rudi", "3333", "SUPERVISOR")
+    vm.repository.saveCashier(cashierUser)
+    vm.repository.saveCashier(supervisorUser)
+
+    // Insert dummy product and add to cart, then hold/pending
+    val prod = com.example.data.local.entity.ProductEntity(
+      plu = "PLU01",
+      barcode = "010101",
+      nama = "Gula Pasir",
+      kategori = "SEMBAKO",
+      hargaBeli = 12000.0,
+      hargaJual = 15000.0,
+      stok = 100
+    )
+    vm.repository.insertProduct(prod)
+    vm.addProductToCart(prod, 2)
+    assert(vm.holdCurrentCart("Pelanggan A"))
+    assertEquals(1, vm.pendingCarts.value.size)
+    val pendingId = vm.pendingCarts.value.first().id
+
+    // 1. Kasir enters cashier PIN (1111) -> Must be rejected
+    var deleteSuccessCashier = false
+    var errorMsgCashier = ""
+    vm.deletePendingCartWithApproval(pendingId, "1111", "Batal") { ok, msg ->
+      deleteSuccessCashier = ok
+      errorMsgCashier = msg
+    }
+    for (i in 1..20) {
+      org.robolectric.shadows.ShadowLooper.idleMainLooper()
+      if (errorMsgCashier.isNotEmpty()) break
+      Thread.sleep(50)
+    }
+    assert(!deleteSuccessCashier)
+    assert(errorMsgCashier.contains("Akses Ditolak"))
+    assertEquals(1, vm.pendingCarts.value.size) // Not deleted!
+
+    // 2. Supervisor enters PIN (3333) -> Must be approved
+    var deleteSuccessSpv = false
+    var msgSpv = ""
+    vm.deletePendingCartWithApproval(pendingId, "3333", "Disetujui Batal") { ok, msg ->
+      deleteSuccessSpv = ok
+      msgSpv = msg
+    }
+    for (i in 1..20) {
+      org.robolectric.shadows.ShadowLooper.idleMainLooper()
+      if (deleteSuccessSpv) break
+      Thread.sleep(50)
+    }
+    assert(deleteSuccessSpv)
+    assertEquals(0, vm.pendingCarts.value.size) // Successfully deleted with SPV approval
+  }
+
+  @Test
+  fun `test clerek only enters physical cash and uses automatic shift modal`() = kotlinx.coroutines.runBlocking {
+    val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val vm = com.example.ui.viewmodel.PosViewModel(app)
+
+    // Open shift with modal 150,000
+    vm.openShift(1, 150000.0)
+    assert(vm.isShiftOpen.value)
+    assertEquals(150000.0, vm.shiftModalAwal.value, 0.01)
+
+    // Cashier submits clerek by ONLY passing physical cash (150,000)
+    var clerekResult: com.example.data.local.entity.ClerekEntity? = null
+    vm.submitClerek(150000.0) { record ->
+      clerekResult = record
+    }
+    for (i in 1..20) {
+      org.robolectric.shadows.ShadowLooper.idleMainLooper()
+      if (clerekResult != null) break
+      Thread.sleep(50)
+    }
+    assert(clerekResult != null)
+    assertEquals(150000.0, clerekResult!!.modalAwal, 0.01)
+    assertEquals(150000.0, clerekResult!!.uangSetoranFisik, 0.01)
+    assertEquals("PAS", clerekResult!!.statusSelisih)
+    assert(!vm.isShiftOpen.value) // Shift automatically closed
+  }
+
+  @Test
+  fun `test customer return records document and restocks inventory`() = kotlinx.coroutines.runBlocking {
+    val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val vm = com.example.ui.viewmodel.PosViewModel(app)
+
+    val testItem = com.example.data.local.entity.TransactionItemEntity(
+      bonNo = "BON-TEST-001",
+      plu = "000001",
+      barcode = "899276111111",
+      nama = "Indomie Goreng",
+      hargaJual = 3500.0,
+      qty = 3,
+      subtotalItem = 10500.0
+    )
+
+    val initialStock = vm.allProducts.value.find { it.plu == "000001" }?.stok ?: 100
+
+    var returnDone = false
+    var returnMsg = ""
+    vm.recordCustomerReturn(
+      nrkNo = "NRK-TEST-999",
+      bonNo = "BON-TEST-001",
+      pelangganNama = "Budi Santoso",
+      petugasNama = "Kasir A",
+      alasanUtama = "BR (Barang Rusak / Cacat)",
+      items = listOf(testItem to Pair(2, "BR (Barang Rusak / Cacat)")),
+      kembalikanKeStok = true,
+      metodePengembalian = "TUNAI"
+    ) { ok, msg ->
+      returnDone = ok
+      returnMsg = msg
+    }
+
+    for (i in 1..20) {
+      org.robolectric.shadows.ShadowLooper.idleMainLooper()
+      if (returnDone) break
+      Thread.sleep(50)
+    }
+
+    assert(returnDone)
+    val returDoc = vm.allReturns.value.find { it.nrbNo == "NRK-TEST-999" }
+    assert(returDoc != null)
+    assertEquals("KONSUMEN", returDoc!!.tipeRetur)
+    assertEquals("BON-TEST-001", returDoc.refNo)
+    assertEquals(7000.0, returDoc.totalNilai, 0.01)
+    assertEquals(2, returDoc.totalQty)
+
+    // Stock should be incremented by 2
+    val updatedStock = vm.allProducts.value.find { it.plu == "000001" }?.stok ?: (initialStock + 2)
+    assertEquals(initialStock + 2, updatedStock)
+  }
 }
 

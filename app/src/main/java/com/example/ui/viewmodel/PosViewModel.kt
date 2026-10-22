@@ -1150,7 +1150,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                     Pair(true, "Supervisor (${authorizedStaff.nama})")
                 }
                 else -> {
-                    Pair(false, "Akses Ditolak: Karyawan '${authorizedStaff.nama}' (${authorizedStaff.role}) bukan Supervisor/Owner dan tidak dapat menyetujui penghapusan pending.")
+                    Pair(false, "Akses Ditolak: Karyawan '${authorizedStaff.nama}' (${authorizedStaff.role}). Kasir tidak boleh menghapus transaksi/item tertunda tanpa persetujuan Supervisor/Owner.")
                 }
             }
 
@@ -1469,6 +1469,74 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 e.printStackTrace()
                 onDone(false)
+            }
+        }
+    }
+
+    fun recordCustomerReturn(
+        nrkNo: String,
+        bonNo: String,
+        pelangganNama: String,
+        petugasNama: String,
+        alasanUtama: String,
+        items: List<Pair<TransactionItemEntity, Pair<Int, String>>>, // item to (qty, reason)
+        kembalikanKeStok: Boolean,
+        metodePengembalian: String = "TUNAI",
+        onDone: (Boolean, String) -> Unit = { _, _ -> }
+    ) {
+        viewModelScope.launch {
+            try {
+                var totalNilai = 0.0
+                var totalQty = 0
+                val jsonArr = org.json.JSONArray()
+                val itemsToRestock = mutableListOf<Pair<String, Int>>()
+
+                for ((item, qtyAndReason) in items) {
+                    val (qty, reason) = qtyAndReason
+                    val subtotal = item.hargaSatuan * qty
+                    totalNilai += subtotal
+                    totalQty += qty
+                    if (kembalikanKeStok) {
+                        itemsToRestock.add(item.plu to qty)
+                    }
+
+                    val obj = org.json.JSONObject().apply {
+                        put("plu", item.plu)
+                        put("barcode", item.barcode)
+                        put("nama", item.namaBarang)
+                        put("satuan", "PCS")
+                        put("qty", qty)
+                        put("hargaSatuan", item.hargaSatuan)
+                        put("subtotal", subtotal)
+                        put("alasan", reason)
+                    }
+                    jsonArr.put(obj)
+                }
+
+                val doc = ReturnDocEntity(
+                    nrbNo = nrkNo,
+                    tipeRetur = "KONSUMEN",
+                    refNo = bonNo,
+                    fakturAsal = bonNo,
+                    supplierNama = pelangganNama.ifBlank { "Konsumen Umum" },
+                    jenisRetur = "RETUR PENJUALAN ($metodePengembalian)",
+                    tanggal = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault()).format(Date()),
+                    totalNilai = totalNilai,
+                    alasan = alasanUtama,
+                    keteranganRetur = "$alasanUtama (Metode: $metodePengembalian)",
+                    status = "SELESAI",
+                    timestamp = System.currentTimeMillis(),
+                    petugasNama = petugasNama.ifBlank { _currentCashier.value?.nama ?: "Kasir" },
+                    tokoTujuan = "Toko Utama",
+                    totalQty = totalQty,
+                    itemsJson = jsonArr.toString()
+                )
+
+                repository.recordCustomerReturn(doc, itemsToRestock)
+                onDone(true, "Retur penjualan $nrkNo berhasil diproses! Total refund: Rp ${totalNilai.toLong()}")
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onDone(false, "Gagal memproses retur penjualan: ${e.message}")
             }
         }
     }

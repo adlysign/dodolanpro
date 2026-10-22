@@ -402,6 +402,7 @@ data class TransactionItemEntity(
 ) {
     val namaBarang: String get() = nama
     val hargaSatuan: Double get() = hargaJual
+    val subtotal: Double get() = subtotalItem
 }
 
 @Entity(tableName = "clerek_records")

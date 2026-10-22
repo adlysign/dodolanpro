@@ -691,7 +691,30 @@ fun RecallPendingDialog(
                     }
                 }
 
+                Surface(
+                    color = Color(0xFFFFF3E0),
+                    shape = RoundedCornerShape(8.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFB74D)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Security, contentDescription = null, tint = Color(0xFFE65100), modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Ketentuan SOP: Kasir tidak boleh menghapus transaksi / item tertunda tanpa persetujuan Supervisor/Owner.",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFBF360C)
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
+
+                var expandedCartId by remember { mutableStateOf<String?>(null) }
 
                 if (pendingCarts.isEmpty()) {
                     Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -701,6 +724,7 @@ fun RecallPendingDialog(
                     LazyColumn(modifier = Modifier.weight(1f)) {
                         items(pendingCarts) { cart ->
                             val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(cart.timestamp))
+                            val isExpanded = expandedCartId == cart.id
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -736,6 +760,49 @@ fun RecallPendingDialog(
                                         Text("Member: ${cart.member.nama}", fontSize = 11.sp, color = RetailGreen)
                                     }
 
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    TextButton(
+                                        onClick = { expandedCartId = if (isExpanded) null else cart.id },
+                                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Icon(
+                                            if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = RetailNavy
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            if (isExpanded) "Sembunyikan Rincian Item" else "Lihat Rincian Item Tertunda (${cart.items.size})",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = RetailNavy
+                                        )
+                                    }
+
+                                    if (isExpanded) {
+                                        Surface(
+                                            color = Color.White,
+                                            shape = RoundedCornerShape(6.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder),
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                        ) {
+                                            Column(modifier = Modifier.padding(8.dp)) {
+                                                cart.items.forEachIndexed { idx, itm ->
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                    ) {
+                                                        Text("${idx + 1}. ${itm.product.nama}", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                                        Text("${itm.qty} ${itm.selectedSatuan} • ${formatRupiah(itm.subtotal)}", fontSize = 11.sp, color = Color.DarkGray)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     Spacer(modifier = Modifier.height(8.dp))
 
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -747,7 +814,7 @@ fun RecallPendingDialog(
                                         ) {
                                             Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Hapus (Otorisasi)", fontSize = 11.sp)
+                                            Text("Hapus (Persetujuan SPV)", fontSize = 11.sp)
                                         }
 
                                         Button(
