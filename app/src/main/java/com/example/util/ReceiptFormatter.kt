@@ -236,36 +236,47 @@ object ReceiptFormatter {
         appendLine(sep)
 
         // Product Items
-        items.forEach { item ->
-            val p = item.product
-            val pluTag = if (cfg.receiptShowPlu && p.plu.isNotBlank()) "[${p.plu}] " else ""
-            val fullName = "$pluTag${p.nama}"
+        if (items.isEmpty()) {
+            appendLine(center("(Tidak ada rincian item)", w))
+        } else {
+            items.forEach { item ->
+                val p = item.product
+                val pluTag = if (cfg.receiptShowPlu && p.plu.isNotBlank()) "[${p.plu}] " else ""
+                val unitTag = if (item.selectedSatuan.isNotBlank()) " (${item.selectedSatuan})" else ""
+                val fullName = "$pluTag${p.nama}$unitTag"
 
-            val lineTotal = (item.qty * p.hargaJual) * (if (item.isRetur) -1 else 1)
-            val lineTotalStr = formatRupiah(lineTotal)
+                val unitPrice = item.unitPrice
+                val lineTotal = item.subtotal
+                val lineTotalStr = formatRupiah(kotlin.math.abs(lineTotal))
 
-            if (w >= 48) {
-                // Wide format 80mm
-                val itemDetail = "${item.qty} x ${formatRupiah(p.hargaJual)}"
-                val namePart = fullName.take(24).padEnd(24)
-                val detailPart = itemDetail.padStart(12)
-                val totPart = lineTotalStr.padStart(10)
-                appendLine("$namePart$detailPart  $totPart")
-            } else {
-                // 58mm 2-line format
-                appendLine(fullName.take(w))
-                val qtyPrice = "  ${item.qty} x ${formatRupiah(p.hargaJual)}"
-                appendLine(justify(qtyPrice, lineTotalStr, w))
-            }
+                if (w >= 48) {
+                    // Wide format 80mm
+                    val itemDetail = "${item.qty} ${item.selectedSatuan} x ${formatRupiah(unitPrice)}"
+                    val namePart = fullName.take(24).padEnd(24)
+                    val detailPart = itemDetail.padStart(12)
+                    val totPart = lineTotalStr.padStart(10)
+                    appendLine("$namePart$detailPart  $totPart")
+                } else {
+                    // 58mm 2-line format
+                    appendLine(fullName.take(w))
+                    val qtyPrice = "  ${item.qty} ${item.selectedSatuan} x ${formatRupiah(unitPrice)}"
+                    appendLine(justify(qtyPrice, lineTotalStr, w))
+                }
 
-            if (cfg.receiptShowDiskon && p.isPromo && p.diskonPersen > 0) {
-                val diskonVal = (item.qty * p.hargaJual * p.diskonPersen / 100.0)
-                appendLine("  * Diskon ${p.diskonPersen}% (-Rp ${formatRupiah(diskonVal)})")
-            }
-            if (item.isVoid) {
-                appendLine("  ** DIBATALKAN / VOID (${item.voidReason}) **")
-            } else if (item.isRetur) {
-                appendLine("  ** RETUR BARANG KONSUMEN **")
+                if (cfg.receiptShowDiskon && item.promoDiscountAmount > 0) {
+                    appendLine("  * Promo (-Rp ${formatRupiah(item.promoDiscountAmount)})")
+                } else if (cfg.receiptShowDiskon && p.isPromo && p.diskonPersen > 0) {
+                    val diskonVal = (item.qty * unitPrice * p.diskonPersen / 100.0)
+                    appendLine("  * Diskon ${p.diskonPersen}% (-Rp ${formatRupiah(diskonVal)})")
+                }
+                if (item.customDiscount > 0) {
+                    appendLine("  * Potongan Manual (-Rp ${formatRupiah(item.customDiscount)})")
+                }
+                if (item.isVoid) {
+                    appendLine("  ** DIBATALKAN / VOID (${item.voidReason}) **")
+                } else if (item.isRetur) {
+                    appendLine("  ** RETUR BARANG KONSUMEN **")
+                }
             }
         }
 
@@ -411,12 +422,18 @@ object ReceiptFormatter {
         }
         appendLine(sep)
 
-        items.forEach { item ->
-            val p = item.product
-            val nameShort = p.nama.take(16).padEnd(16)
-            val qtyStr = "${item.qty}x".padStart(3)
-            val totalStr = formatRupiah(item.qty * p.hargaJual).padStart(9)
-            appendLine("$nameShort $qtyStr $totalStr")
+        if (items.isEmpty()) {
+            appendLine(center("(Tidak ada rincian item)", w))
+        } else {
+            items.forEach { item ->
+                val p = item.product
+                val unitPrice = item.unitPrice
+                val lineTotal = item.subtotal
+                val nameShort = p.nama.take(15).padEnd(15)
+                val qtyStr = "${item.qty}x".padStart(3)
+                val totalStr = formatRupiah(kotlin.math.abs(lineTotal)).padStart(9)
+                appendLine("$nameShort $qtyStr $totalStr")
+            }
         }
 
         appendLine(sep)
@@ -466,12 +483,19 @@ object ReceiptFormatter {
         appendLine(justify("MENU PESANAN", "TOTAL", w))
         appendLine(sep)
 
-        items.forEach { item ->
-            val p = item.product
-            appendLine("${item.qty}x ${p.nama}")
-            val subItem = "@${formatRupiah(p.hargaJual)}"
-            val totItem = "Rp ${formatRupiah(item.qty * p.hargaJual)}"
-            appendLine(justify("   $subItem", totItem, w))
+        if (items.isEmpty()) {
+            appendLine(center("(Tidak ada menu pesanan)", w))
+        } else {
+            items.forEach { item ->
+                val p = item.product
+                val unitPrice = item.unitPrice
+                val lineTotal = item.subtotal
+                val unitTag = if (item.selectedSatuan.isNotBlank()) " (${item.selectedSatuan})" else ""
+                appendLine("${item.qty}x ${p.nama}$unitTag")
+                val subItem = "@${formatRupiah(unitPrice)}"
+                val totItem = "Rp ${formatRupiah(kotlin.math.abs(lineTotal))}"
+                appendLine(justify("   $subItem", totItem, w))
+            }
         }
 
         appendLine(sep)
@@ -550,12 +574,19 @@ object ReceiptFormatter {
 
         appendLine(dblSep)
 
-        items.forEach { item ->
-            val p = item.product
-            appendLine(p.nama.uppercase())
-            val detail = "${item.qty} pcs @ Rp ${formatRupiah(p.hargaJual)}"
-            val tot = "Rp ${formatRupiah(item.qty * p.hargaJual)}"
-            appendLine(justify("  $detail", tot, w))
+        if (items.isEmpty()) {
+            appendLine(center("(Tidak ada rincian item)", w))
+        } else {
+            items.forEach { item ->
+                val p = item.product
+                val unitPrice = item.unitPrice
+                val lineTotal = item.subtotal
+                val unitTag = if (item.selectedSatuan.isNotBlank()) " (${item.selectedSatuan})" else ""
+                appendLine("${p.nama.uppercase()}$unitTag")
+                val detail = "${item.qty} ${item.selectedSatuan} @ Rp ${formatRupiah(unitPrice)}"
+                val tot = "Rp ${formatRupiah(kotlin.math.abs(lineTotal))}"
+                appendLine(justify("  $detail", tot, w))
+            }
         }
 
         appendLine(sep)

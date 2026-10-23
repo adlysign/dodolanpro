@@ -222,10 +222,21 @@ class PosRepository(private val dao: PosDao) {
         var totalDonasi = 0.0
 
         for (tx in txs) {
-            if (tx.caraBayar == "TUNAI") {
-                totalTunai += (tx.grandTotal - tx.donasi)
-            } else {
-                totalNonTunai += tx.grandTotal
+            when (tx.caraBayar) {
+                "TUNAI" -> {
+                    val netCash = (tx.bayarTunai - tx.kembalian).coerceAtLeast(0.0)
+                    val cashSales = if (netCash > 0.0) netCash else tx.grandTotal
+                    totalTunai += (cashSales - tx.donasi).coerceAtLeast(0.0)
+                }
+                "CAMPURAN" -> {
+                    val netCashPortion = (tx.bayarTunai - tx.kembalian).coerceAtLeast(0.0)
+                    totalTunai += (netCashPortion - tx.donasi).coerceAtLeast(0.0)
+                    val nonCashPortion = if (tx.bayarNonTunai > 0.0) tx.bayarNonTunai else (tx.grandTotal - netCashPortion).coerceAtLeast(0.0)
+                    totalNonTunai += nonCashPortion
+                }
+                else -> {
+                    totalNonTunai += tx.grandTotal
+                }
             }
             totalDonasi += tx.donasi
         }
@@ -423,6 +434,15 @@ class PosRepository(private val dao: PosDao) {
             obj.put("hargaGrosir", p.hargaGrosir)
             obj.put("varian", p.varian)
             obj.put("isRepack", p.isRepack)
+            obj.put("promoType", p.promoType)
+            obj.put("diskonNominal", p.diskonNominal)
+            obj.put("promoMinBeli", p.promoMinBeli)
+            obj.put("promoGratisQty", p.promoGratisQty)
+            obj.put("promoPotonganNominal", p.promoPotonganNominal)
+            obj.put("promoKeterangan", p.promoKeterangan)
+            obj.put("promoBerlakuKelipatan", p.promoBerlakuKelipatan)
+            obj.put("promoHanyaSatuanDasar", p.promoHanyaSatuanDasar)
+            obj.put("promoKhususSatuan", p.promoKhususSatuan)
             products.put(obj)
         }
         root.put("products", products)
@@ -518,7 +538,16 @@ class PosRepository(private val dao: PosDao) {
                             hargaGrosirQty = obj.optInt("hargaGrosirQty", 2),
                             hargaGrosir = obj.optDouble("hargaGrosir", 0.0),
                             varian = obj.optString("varian", ""),
-                            isRepack = obj.optBoolean("isRepack", false)
+                            isRepack = obj.optBoolean("isRepack", false),
+                            promoType = obj.optString("promoType", "DISKON_PERSEN"),
+                            diskonNominal = obj.optDouble("diskonNominal", 0.0),
+                            promoMinBeli = obj.optInt("promoMinBeli", 2),
+                            promoGratisQty = obj.optInt("promoGratisQty", 1),
+                            promoPotonganNominal = obj.optDouble("promoPotonganNominal", 0.0),
+                            promoKeterangan = obj.optString("promoKeterangan", ""),
+                            promoBerlakuKelipatan = obj.optBoolean("promoBerlakuKelipatan", true),
+                            promoHanyaSatuanDasar = obj.optBoolean("promoHanyaSatuanDasar", true),
+                            promoKhususSatuan = obj.optString("promoKhususSatuan", "")
                         )
                     )
                 }

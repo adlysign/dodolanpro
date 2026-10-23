@@ -59,10 +59,25 @@ fun ClerekScreen(
 
     val liveTotalJual = remember(unclerekTx) { unclerekTx.sumOf { it.grandTotal } }
     val liveTunai = remember(unclerekTx) {
-        unclerekTx.filter { it.caraBayar == "TUNAI" }.sumOf { it.bayarTunai - it.kembalian }
+        unclerekTx.sumOf { tx ->
+            when (tx.caraBayar) {
+                "TUNAI" -> {
+                    val net = tx.bayarTunai - tx.kembalian
+                    if (net > 0.0) net else tx.grandTotal
+                }
+                "CAMPURAN" -> (tx.bayarTunai - tx.kembalian).coerceAtLeast(0.0)
+                else -> 0.0
+            }
+        }
     }
     val liveNonTunai = remember(unclerekTx) {
-        unclerekTx.filter { it.caraBayar != "TUNAI" }.sumOf { it.grandTotal }
+        unclerekTx.sumOf { tx ->
+            when (tx.caraBayar) {
+                "TUNAI" -> 0.0
+                "CAMPURAN" -> if (tx.bayarNonTunai > 0.0) tx.bayarNonTunai else (tx.grandTotal - (tx.bayarTunai - tx.kembalian)).coerceAtLeast(0.0)
+                else -> tx.grandTotal
+            }
+        }
     }
     val liveCard = remember(unclerekTx) {
         unclerekTx.filter { it.caraBayar == "CARD" || it.caraBayar == "CAMPURAN" }.sumOf {

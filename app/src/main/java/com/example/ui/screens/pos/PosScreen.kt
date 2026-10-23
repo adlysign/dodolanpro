@@ -105,6 +105,7 @@ fun PosScreen(
     var showBukaShiftDialog by remember { mutableStateOf(false) }
     var showCameraScannerDialog by remember { mutableStateOf(false) }
     var showReceiptDialog by remember { mutableStateOf<TransactionEntity?>(null) }
+    var lastCompletedCartItems by remember { mutableStateOf<List<CartItem>>(emptyList()) }
     var selectedCartIndex by remember { mutableStateOf<Int?>(null) }
     var itemToEditQty by remember { mutableStateOf<Pair<Int, CartItem>?>(null) }
     var itemToChangeSatuan by remember { mutableStateOf<Pair<Int, CartItem>?>(null) }
@@ -998,8 +999,10 @@ fun PosScreen(
             onApplyVoucher = { viewModel.applyVoucher(it) },
             onDismiss = { showPaymentDialog = false },
             onProcessPayment = { caraBayar, tunai, nonTunai, ref ->
+                val currentCartSnapshot = cartItems.toList()
                 viewModel.processCheckout(caraBayar, tunai, nonTunai, ref) { ok, msg, tx ->
                     if (ok && tx != null) {
+                        lastCompletedCartItems = currentCartSnapshot
                         showPaymentDialog = false
                         showReceiptDialog = tx
                     } else {
@@ -1293,9 +1296,12 @@ fun PosScreen(
     showReceiptDialog?.let { tx ->
         ReceiptDialog(
             transaction = tx,
-            items = cartItems,
+            items = if (lastCompletedCartItems.isNotEmpty()) lastCompletedCartItems else cartItems,
             storeConfig = storeConfig,
-            onDismiss = { showReceiptDialog = null }
+            onDismiss = {
+                showReceiptDialog = null
+                lastCompletedCartItems = emptyList()
+            }
         )
     }
 
@@ -2240,6 +2246,9 @@ fun PromoBannerSection(
             promoItems.forEach { item ->
                 val prod = item.product
                 val promoDesc = when {
+                    !item.isPromoEligibleForUnit -> {
+                        "Promo '${prod.getEffectivePromoLabel()}' khusus ecer (${prod.satuan}) • Satuan: ${item.selectedSatuan} (Tidak Terpotong)"
+                    }
                     prod.promoType == "BELI_X_GRATIS_Y" -> {
                         if (item.qty >= prod.promoMinBeli) {
                             val freeUnits = (item.qty / prod.promoMinBeli) * maxOf(1, prod.promoGratisQty)

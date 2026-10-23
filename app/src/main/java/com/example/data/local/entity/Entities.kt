@@ -321,12 +321,26 @@ data class ProductEntity(
     val promoPotonganNominal: Double = 0.0,
     val promoBerlakuDari: String = "",
     val promoBerlakuSampai: String = "",
-    val promoKeterangan: String = ""
+    val promoKeterangan: String = "",
+    val promoBerlakuKelipatan: Boolean = true,
+    val promoHanyaSatuanDasar: Boolean = true,
+    val promoKhususSatuan: String = ""
 ) {
     fun hasDiscountOrPromo(): Boolean {
         if (!isPromo) return false
         return diskonPersen > 0 || diskonNominal > 0 || promoPotonganNominal > 0 ||
                 promoType == "BELI_X_GRATIS_Y" || (hargaGrosir > 0)
+    }
+
+    fun isPromoEligible(satuanDipakai: String): Boolean {
+        if (!isPromo && !hasDiscountOrPromo()) return false
+        if (promoHanyaSatuanDasar) {
+            return satuanDipakai.equals(satuan, ignoreCase = true)
+        }
+        if (promoKhususSatuan.isNotBlank()) {
+            return satuanDipakai.equals(promoKhususSatuan, ignoreCase = true)
+        }
+        return true
     }
 
     fun getEffectivePromoLabel(): String {

@@ -515,14 +515,15 @@ class ExampleRobolectricTest {
       returnMsg = msg
     }
 
-    for (i in 1..20) {
+    var returDoc: com.example.data.local.entity.ReturnDocEntity? = null
+    for (i in 1..30) {
       org.robolectric.shadows.ShadowLooper.idleMainLooper()
-      if (returnDone) break
+      returDoc = vm.allReturns.value.find { it.nrbNo == "NRK-TEST-999" }
+      if (returnDone && returDoc != null) break
       Thread.sleep(50)
     }
 
     assert(returnDone)
-    val returDoc = vm.allReturns.value.find { it.nrbNo == "NRK-TEST-999" }
     assert(returDoc != null)
     assertEquals("KONSUMEN", returDoc!!.tipeRetur)
     assertEquals("BON-TEST-001", returDoc.refNo)
@@ -532,6 +533,156 @@ class ExampleRobolectricTest {
     // Stock should be incremented by 2
     val updatedStock = vm.allProducts.value.find { it.plu == "000001" }?.stok ?: (initialStock + 2)
     assertEquals(initialStock + 2, updatedStock)
+  }
+
+  @Test
+  fun `test clerek with split payment accurately calculates physical cash in drawer`() = kotlinx.coroutines.runBlocking {
+    val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val vm = com.example.ui.viewmodel.PosViewModel(app)
+
+    val cashier = com.example.data.local.entity.CashierUserEntity("KASIR99", "Kasir Uji", "1234", "KASIR")
+    vm.repository.saveCashier(cashier)
+
+    var loginOk = false
+    vm.loginCashier("KASIR99", "1234") { ok, _ -> loginOk = ok }
+    for (i in 1..20) {
+      org.robolectric.shadows.ShadowLooper.idleMainLooper()
+      if (loginOk) break
+      Thread.sleep(50)
+    }
+    assert(loginOk)
+
+    // Open shift with modal 10,000
+    vm.openShift(1, 10000.0)
+    assertEquals(10000.0, vm.shiftModalAwal.value, 0.01)
+
+    // Create item with price 5,200
+    val product = com.example.data.local.entity.ProductEntity(
+      plu = "PLU-TEST-52",
+      barcode = "899999999952",
+      nama = "Barang Uji 5200",
+      kategori = "UMUM",
+      hargaBeli = 3000.0,
+      hargaJual = 5200.0,
+      stok = 50
+    )
+    vm.repository.insertProduct(product)
+    vm.addProductToCart(product, 1)
+
+    for (i in 1..20) {
+      org.robolectric.shadows.ShadowLooper.idleMainLooper()
+      if (vm.grandTotal.value > 0.0) break
+      Thread.sleep(50)
+    }
+
+    var checkoutDone = false
+    var txResult: com.example.data.local.entity.TransactionEntity? = null
+    vm.processCheckout("CAMPURAN", 2000.0, 3200.0, "CAMPURAN: Tunai + QRIS") { ok, _, tx ->
+      checkoutDone = ok
+      txResult = tx
+    }
+    for (i in 1..20) {
+      org.robolectric.shadows.ShadowLooper.idleMainLooper()
+      if (checkoutDone) break
+      Thread.sleep(50)
+    }
+    assert(checkoutDone)
+    assert(txResult != null)
+    assertEquals(5200.0, txResult!!.grandTotal, 0.01)
+    assertEquals(2000.0, txResult!!.bayarTunai, 0.01)
+    assertEquals(3200.0, txResult!!.bayarNonTunai, 0.01)
+    assertEquals(0.0, txResult!!.kembalian, 0.01)
+
+    // Kasir submits clerek with counted physical cash = 200,000
+    var clerekResult: com.example.data.local.entity.ClerekEntity? = null
+    vm.submitClerek(200000.0) { record ->
+      clerekResult = record
+    }
+    for (i in 1..20) {
+      org.robolectric.shadows.ShadowLooper.idleMainLooper()
+      if (clerekResult != null) break
+      Thread.sleep(50)
+    }
+    assert(clerekResult != null)
+    assertEquals(10000.0, clerekResult!!.modalAwal, 0.01)
+    assertEquals(2000.0, clerekResult!!.totalPenjualanTunai, 0.01)
+    assertEquals(3200.0, clerekResult!!.totalPenjualanNonTunai, 0.01)
+    assertEquals(5200.0, clerekResult!!.totalPenjualan, 0.01)
+    assertEquals(200000.0, clerekResult!!.uangSetoranFisik, 0.01)
+
+    // Expected cash in drawer: modal 10,000 + tunai 2,000 = 12,000.
+    // Selisih: setoran 200,000 - 12,000 = +188,000 (LEBIH)
+    assertEquals(188000.0, clerekResult!!.selisih, 0.01)
+    assertEquals("LEBIH", clerekResult!!.statusSelisih)
+  }
+
+  @Test
+  fun `test promo retail restriction and kelipatan rules`() = kotlinx.coroutines.runBlocking {
+    val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val vm = com.example.ui.viewmodel.PosViewModel(app)
+
+    // Product Aqua: Beli 3 Potongan 2.000, ecer BTL Rp 4.000, Dus Rp 88.000
+    val aqua = com.example.data.local.entity.ProductEntity(
+      plu = "AQUA-01",
+      barcode = "8998009010223",
+      nama = "Aqua 600ml",
+      kategori = "Minuman",
+      hargaBeli = 3000.0,
+      hargaJual = 4000.0,
+      stok = 100,
+      satuan = "BTL",
+      isPromo = true,
+      promoType = "BELI_X_POTONGAN",
+      promoMinBeli = 3,
+      promoPotonganNominal = 2000.0,
+      promoBerlakuKelipatan = true,
+      promoHanyaSatuanDasar = true,
+      isRepack = true,
+      satuanRepack = "DUS",
+      isiRepack = 24,
+      hargaRepack = 88000.0
+    )
+    vm.repository.insertProduct(aqua)
+
+    // 1. Buy 3 BTL (Ecer) -> Promo applies! Total normal 12,000 - 2,000 = 10,000
+    val cartItemBtl3 = com.example.ui.viewmodel.CartItem(
+      product = aqua,
+      qty = 3,
+      selectedSatuan = "BTL"
+    )
+    assert(cartItemBtl3.isPromoEligibleForUnit)
+    assertEquals(2000.0, cartItemBtl3.promoDiscountAmount, 0.01)
+    assertEquals(10000.0, cartItemBtl3.subtotal, 0.01)
+
+    // 2. Buy 6 BTL with kelipatan = true -> Promo applies 2x! Discount 4,000, subtotal = 20,000
+    val cartItemBtl6 = com.example.ui.viewmodel.CartItem(
+      product = aqua,
+      qty = 6,
+      selectedSatuan = "BTL"
+    )
+    assertEquals(4000.0, cartItemBtl6.promoDiscountAmount, 0.01)
+    assertEquals(20000.0, cartItemBtl6.subtotal, 0.01)
+
+    // 3. Buy 3 DUS -> Satuan DUS is NOT base unit -> Promo must NOT apply!
+    val cartItemDus3 = com.example.ui.viewmodel.CartItem(
+      product = aqua,
+      qty = 3,
+      selectedSatuan = "DUS"
+    )
+    assert(!cartItemDus3.isPromoEligibleForUnit)
+    assertEquals(0.0, cartItemDus3.promoDiscountAmount, 0.01) // NO DISCOUNT ON DUS!
+    assertEquals(264000.0, cartItemDus3.subtotal, 0.01) // 3 * 88,000 = 264,000 full price
+
+    // 4. Test Non-Kelipatan rule (promoBerlakuKelipatan = false)
+    val aquaNonKelipatan = aqua.copy(promoBerlakuKelipatan = false)
+    val cartItemNonKelipatan = com.example.ui.viewmodel.CartItem(
+      product = aquaNonKelipatan,
+      qty = 6,
+      selectedSatuan = "BTL"
+    )
+    // Even though buying 6 (2 sets of 3), discount is capped at 1x (2,000)
+    assertEquals(2000.0, cartItemNonKelipatan.promoDiscountAmount, 0.01)
+    assertEquals(22000.0, cartItemNonKelipatan.subtotal, 0.01) // 6 * 4000 - 2000 = 22,000
   }
 }
 

@@ -1442,15 +1442,53 @@ fun ReceiptDialog(
     var saveStatusMsg by remember { mutableStateOf("") }
     var isPrinting by remember { mutableStateOf(false) }
 
-    val receiptText = remember(transaction, items, storeConfig) {
-        com.example.util.ReceiptFormatter.formatReceipt(transaction, items, storeConfig)
+    var resolvedItems by remember(transaction.bonNo, items) {
+        mutableStateOf(items)
     }
 
-    // Auto-print on dialog open if enabled
-    LaunchedEffect(Unit) {
+    LaunchedEffect(transaction.bonNo, items) {
+        if (items.isEmpty()) {
+            val db = com.example.data.local.AppDatabase.getInstance(context)
+            val dbItems = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                db.posDao().getItemsForBon(transaction.bonNo)
+            }
+            if (dbItems.isNotEmpty()) {
+                resolvedItems = dbItems.map { entity ->
+                    CartItem(
+                        product = com.example.data.local.entity.ProductEntity(
+                            plu = entity.plu,
+                            barcode = entity.barcode,
+                            nama = entity.nama,
+                            satuan = entity.satuan,
+                            kategori = "",
+                            hargaBeli = 0.0,
+                            hargaJual = entity.hargaJual,
+                            stok = 0,
+                            isPromo = entity.isPromo
+                        ),
+                        qty = kotlin.math.abs(entity.qty),
+                        selectedSatuan = entity.satuan,
+                        selectedHargaJual = entity.hargaJual,
+                        isRetur = entity.qty < 0
+                    )
+                }
+            }
+        } else {
+            resolvedItems = items
+        }
+    }
+
+    val receiptText = remember(transaction, resolvedItems, storeConfig) {
+        com.example.util.ReceiptFormatter.formatReceipt(transaction, resolvedItems, storeConfig)
+    }
+
+    // Auto-print on dialog open or when items are loaded if enabled
+    LaunchedEffect(resolvedItems) {
         if (storeConfig.autoPrintReceipt && storeConfig.printerType == "BLUETOOTH" && storeConfig.bluetoothPrinterMac.isNotBlank()) {
-            val escPos = com.example.util.ReceiptFormatter.generateEscPos(receiptText, storeConfig)
-            com.example.util.BluetoothPrinterHelper.printOverBluetooth(storeConfig.bluetoothPrinterMac, escPos)
+            if (resolvedItems.isNotEmpty()) {
+                val escPos = com.example.util.ReceiptFormatter.generateEscPos(receiptText, storeConfig)
+                com.example.util.BluetoothPrinterHelper.printOverBluetooth(storeConfig.bluetoothPrinterMac, escPos)
+            }
         }
     }
 

@@ -77,49 +77,85 @@ data class CartItem(
             }
         }
 
+    val isPromoEligibleForUnit: Boolean
+        get() = product.isPromoEligible(selectedSatuan)
+
     val promoDiscountAmount: Double
         get() {
             if (isVoid || isRetur) return 0.0
+
+            val isBaseUnit = selectedSatuan.equals(product.satuan, ignoreCase = true)
+
             if (!product.isPromo && !product.hasDiscountOrPromo()) {
-                if (isGrosirApplied && product.hargaGrosir > 0 && qty >= product.hargaGrosirQty) {
+                if (isGrosirApplied && isBaseUnit && product.hargaGrosir > 0 && qty >= product.hargaGrosirQty) {
                     return qty * maxOf(0.0, baseUnitPrice - product.hargaGrosir)
                 }
                 return 0.0
             }
 
+            if (!isPromoEligibleForUnit) {
+                return 0.0
+            }
+
+            val kelipatan = product.promoBerlakuKelipatan
+
             return when (product.promoType) {
                 "BELI_X_GRATIS_Y" -> {
                     if (product.promoMinBeli > 0 && qty >= product.promoMinBeli) {
-                        val freeUnits = (qty / product.promoMinBeli) * maxOf(1, product.promoGratisQty)
+                        val freeUnits = if (kelipatan) {
+                            (qty / product.promoMinBeli) * maxOf(1, product.promoGratisQty)
+                        } else {
+                            maxOf(1, product.promoGratisQty)
+                        }
                         freeUnits * baseUnitPrice
                     } else 0.0
                 }
                 "BELI_X_POTONGAN" -> {
                     if (product.promoMinBeli > 0 && qty >= product.promoMinBeli && product.promoPotonganNominal > 0) {
-                        val sets = qty / product.promoMinBeli
+                        val sets = if (kelipatan) {
+                            qty / product.promoMinBeli
+                        } else {
+                            1
+                        }
                         sets * product.promoPotonganNominal
                     } else 0.0
                 }
                 "DISKON_NOMINAL" -> {
                     if (product.diskonNominal > 0) {
-                        qty * product.diskonNominal
+                        if (kelipatan) {
+                            qty * product.diskonNominal
+                        } else {
+                            product.diskonNominal
+                        }
                     } else 0.0
                 }
                 "DISKON_PERSEN" -> {
                     if (product.diskonPersen > 0) {
-                        qty * baseUnitPrice * (product.diskonPersen / 100.0)
+                        if (kelipatan) {
+                            qty * baseUnitPrice * (product.diskonPersen / 100.0)
+                        } else {
+                            baseUnitPrice * (product.diskonPersen / 100.0)
+                        }
                     } else 0.0
                 }
                 "GROSIR" -> {
-                    if (product.hargaGrosir > 0 && qty >= product.hargaGrosirQty) {
+                    if (isBaseUnit && product.hargaGrosir > 0 && qty >= product.hargaGrosirQty) {
                         qty * maxOf(0.0, baseUnitPrice - product.hargaGrosir)
                     } else 0.0
                 }
                 else -> {
                     if (product.diskonPersen > 0) {
-                        qty * baseUnitPrice * (product.diskonPersen / 100.0)
+                        if (kelipatan) {
+                            qty * baseUnitPrice * (product.diskonPersen / 100.0)
+                        } else {
+                            baseUnitPrice * (product.diskonPersen / 100.0)
+                        }
                     } else if (product.diskonNominal > 0) {
-                        qty * product.diskonNominal
+                        if (kelipatan) {
+                            qty * product.diskonNominal
+                        } else {
+                            product.diskonNominal
+                        }
                     } else 0.0
                 }
             }
@@ -144,8 +180,10 @@ data class CartItem(
 
     val promoStatusText: String
         get() {
+            if (isVoid || isRetur) return ""
+
             if (!product.isPromo && !product.hasDiscountOrPromo()) {
-                if (product.hargaGrosir > 0 && product.hargaGrosirQty > 0) {
+                if (product.hargaGrosir > 0 && product.hargaGrosirQty > 0 && selectedSatuan.equals(product.satuan, ignoreCase = true)) {
                     if (qty >= product.hargaGrosirQty) {
                         return "Grosir Beli >= ${product.hargaGrosirQty} (Hemat ${formatRupiah(promoDiscountAmount)})"
                     } else {
@@ -156,11 +194,21 @@ data class CartItem(
                 return ""
             }
 
+            if (!isPromoEligibleForUnit) {
+                return "Promo '${product.getEffectivePromoLabel()}' khusus satuan ecer (${product.satuan})"
+            }
+
+            val kelipatanTag = if (!product.promoBerlakuKelipatan) " (Maks. 1x / struk)" else ""
+
             return when (product.promoType) {
                 "BELI_X_GRATIS_Y" -> {
                     if (qty >= product.promoMinBeli) {
-                        val freeUnits = (qty / product.promoMinBeli) * maxOf(1, product.promoGratisQty)
-                        "Beli ${product.promoMinBeli} Gratis ${product.promoGratisQty} (Dapat $freeUnits Gratis, Hemat ${formatRupiah(promoDiscountAmount)})"
+                        val freeUnits = if (product.promoBerlakuKelipatan) {
+                            (qty / product.promoMinBeli) * maxOf(1, product.promoGratisQty)
+                        } else {
+                            maxOf(1, product.promoGratisQty)
+                        }
+                        "Beli ${product.promoMinBeli} Gratis ${product.promoGratisQty}$kelipatanTag (Dapat $freeUnits Gratis, Hemat ${formatRupiah(promoDiscountAmount)})"
                     } else {
                         val needed = product.promoMinBeli - qty
                         "Beli $needed lagi untuk dapatkan GRATIS ${product.promoGratisQty}!"
@@ -168,17 +216,17 @@ data class CartItem(
                 }
                 "BELI_X_POTONGAN" -> {
                     if (qty >= product.promoMinBeli) {
-                        "Beli ${product.promoMinBeli} Potongan ${formatRupiah(product.promoPotonganNominal)} (Hemat ${formatRupiah(promoDiscountAmount)})"
+                        "Beli ${product.promoMinBeli} Potongan ${formatRupiah(product.promoPotonganNominal)}$kelipatanTag (Hemat ${formatRupiah(promoDiscountAmount)})"
                     } else {
                         val needed = product.promoMinBeli - qty
                         "Beli $needed lagi untuk Potongan ${formatRupiah(product.promoPotonganNominal)}!"
                     }
                 }
                 "DISKON_NOMINAL" -> {
-                    "Diskon ${formatRupiah(product.diskonNominal)}/item (Hemat ${formatRupiah(promoDiscountAmount)})"
+                    "Diskon ${formatRupiah(product.diskonNominal)}/item$kelipatanTag (Hemat ${formatRupiah(promoDiscountAmount)})"
                 }
                 "DISKON_PERSEN" -> {
-                    "Diskon ${product.diskonPersen.toInt()}% (Hemat ${formatRupiah(promoDiscountAmount)})"
+                    "Diskon ${product.diskonPersen.toInt()}%$kelipatanTag (Hemat ${formatRupiah(promoDiscountAmount)})"
                 }
                 "GROSIR" -> {
                     if (qty >= product.hargaGrosirQty) {
@@ -189,7 +237,7 @@ data class CartItem(
                     }
                 }
                 else -> {
-                    if (isPromoActive) "Promo Hemat ${formatRupiah(promoDiscountAmount)}"
+                    if (isPromoActive) "Promo Hemat ${formatRupiah(promoDiscountAmount)}$kelipatanTag"
                     else product.getEffectivePromoLabel()
                 }
             }
@@ -400,7 +448,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allReturns: StateFlow<List<ReturnDocEntity>> = repository.allReturns
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val allVouchers: StateFlow<List<VoucherEntity>> = repository.getAllVouchers()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -624,7 +672,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     // Totals
     val subtotal: StateFlow<Double> = _cartItems.map { items ->
         items.sumOf { it.subtotal }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, 0.0)
 
     val grandTotal: StateFlow<Double> = combine(
         subtotal, _appliedPoin, _appliedVoucherDiscount, storeConfig
@@ -637,7 +685,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             base
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, 0.0)
 
     val taxAmount: StateFlow<Double> = combine(
         subtotal, _appliedPoin, _appliedVoucherDiscount, storeConfig
@@ -654,7 +702,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             0.0
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, 0.0)
 
     val totalDiscount: StateFlow<Double> = combine(
         _cartItems, _appliedPoin, _appliedVoucherDiscount, storeConfig
@@ -666,7 +714,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         }
         val poinNominal = if (cfg.poinAktif) poin * cfg.nilaiPerPoin else 0.0
         itemsDiscount + poinNominal + vDisc
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, 0.0)
 
     fun onBarcodeInputChanged(value: String) {
         _inputBarcodeInput.value = value
@@ -719,11 +767,15 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         _cartItems.value = currentList
 
         // Check for Promo Alerts
-        if (freshProduct.isPromo) {
+        if (freshProduct.isPromo && freshProduct.isPromoEligible(selectedSatuan)) {
             when (freshProduct.promoType) {
                 "BELI_X_GRATIS_Y" -> {
                     if (newTotalQty >= product.promoMinBeli) {
-                        val freeUnits = (newTotalQty / product.promoMinBeli) * maxOf(1, product.promoGratisQty)
+                        val freeUnits = if (freshProduct.promoBerlakuKelipatan) {
+                            (newTotalQty / product.promoMinBeli) * maxOf(1, product.promoGratisQty)
+                        } else {
+                            maxOf(1, product.promoGratisQty)
+                        }
                         val hemat = freeUnits * product.hargaJual
                         _activePromoAlert.value = PromoAlertInfo(
                             product = product,
@@ -749,7 +801,11 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 "BELI_X_POTONGAN" -> {
                     if (newTotalQty >= product.promoMinBeli) {
-                        val sets = newTotalQty / product.promoMinBeli
+                        val sets = if (freshProduct.promoBerlakuKelipatan) {
+                            newTotalQty / product.promoMinBeli
+                        } else {
+                            1
+                        }
                         val hemat = sets * product.promoPotonganNominal
                         _activePromoAlert.value = PromoAlertInfo(
                             product = product,
@@ -1684,7 +1740,13 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             val bonNo = _currentBonNo.value
             val kasir = _currentCashier.value ?: CashierUserEntity("001", "Kasir Default", "1111")
             val sub = subtotal.value
-            val kembalian = if (caraBayar == "TUNAI") (bayarTunai - grand).coerceAtLeast(0.0) else 0.0
+            val kembalian = if (caraBayar == "TUNAI") {
+                (bayarTunai - grand).coerceAtLeast(0.0)
+            } else if (caraBayar == "CAMPURAN") {
+                (bayarTunai + bayarNonTunai - grand).coerceAtLeast(0.0)
+            } else {
+                0.0
+            }
 
             val txItems = items.map { item ->
                 TransactionItemEntity(
@@ -2236,8 +2298,23 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 val txToday = allTransactions.value
                 val clerekToday = allClerekRecords.value
                 val totalOmset = txToday.sumOf { it.grandTotal }
-                val totalTunai = txToday.filter { it.caraBayar == "TUNAI" }.sumOf { it.grandTotal }
-                val totalNonTunai = txToday.filter { it.caraBayar != "TUNAI" }.sumOf { it.grandTotal }
+                val totalTunai = txToday.sumOf { tx ->
+                    when (tx.caraBayar) {
+                        "TUNAI" -> {
+                            val net = tx.bayarTunai - tx.kembalian
+                            if (net > 0.0) net else tx.grandTotal
+                        }
+                        "CAMPURAN" -> (tx.bayarTunai - tx.kembalian).coerceAtLeast(0.0)
+                        else -> 0.0
+                    }
+                }
+                val totalNonTunai = txToday.sumOf { tx ->
+                    when (tx.caraBayar) {
+                        "TUNAI" -> 0.0
+                        "CAMPURAN" -> if (tx.bayarNonTunai > 0.0) tx.bayarNonTunai else (tx.grandTotal - (tx.bayarTunai - tx.kembalian)).coerceAtLeast(0.0)
+                        else -> tx.grandTotal
+                    }
+                }
 
                 val summaryText = buildString {
                     appendLine("==========================================")
@@ -2532,6 +2609,14 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    suspend fun getPurchaseItems(faktur: String): List<PurchaseItemEntity> {
+        return repository.getPurchaseItems(faktur)
+    }
+
+    suspend fun getItemsForBon(bonNo: String): List<TransactionItemEntity> {
+        return repository.getItemsForBon(bonNo)
+    }
+
     fun recordDirectPurchase(purchase: PurchaseEntity, items: List<PurchaseItemEntity>, onDone: () -> Unit = {}) {
         viewModelScope.launch {
             repository.recordPurchase(purchase, items)
@@ -2548,7 +2633,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         items: List<Pair<ProductEntity, Pair<Int, Double>>>,
         itemUnits: Map<String, Pair<String, Int>> = emptyMap(),
         costMethod: String = "AVERAGE",
-        onDone: () -> Unit = {}
+        onDone: (PurchaseEntity) -> Unit = {}
     ) {
         viewModelScope.launch {
             val purchaseItems = items.map { (prod, qtyAndPrice) ->
@@ -2581,7 +2666,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 tokoTujuan = tokoTujuan.ifBlank { "Toko Utama" }
             )
             repository.recordPurchase(purchase, purchaseItems, updateCostMethod = costMethod)
-            onDone()
+            onDone(purchase)
         }
     }
 

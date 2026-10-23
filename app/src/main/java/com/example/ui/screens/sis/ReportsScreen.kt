@@ -284,8 +284,20 @@ fun ReportsScreen(
             val name = txs.firstOrNull()?.kasirNama ?: nik
             val omset = txs.sumOf { it.grandTotal }
             val bonCount = txs.size
-            val tunai = txs.filter { it.caraBayar == "TUNAI" }.sumOf { it.grandTotal }
-            val nonTunai = txs.filter { it.caraBayar != "TUNAI" }.sumOf { it.grandTotal }
+            val tunai = txs.sumOf { tx ->
+                when (tx.caraBayar) {
+                    "TUNAI" -> tx.grandTotal
+                    "CAMPURAN" -> (tx.bayarTunai - tx.kembalian).coerceAtLeast(0.0)
+                    else -> 0.0
+                }
+            }
+            val nonTunai = txs.sumOf { tx ->
+                when (tx.caraBayar) {
+                    "TUNAI" -> 0.0
+                    "CAMPURAN" -> if (tx.bayarNonTunai > 0.0) tx.bayarNonTunai else (tx.grandTotal - (tx.bayarTunai - tx.kembalian)).coerceAtLeast(0.0)
+                    else -> tx.grandTotal
+                }
+            }
             Triple(nik, name, listOf(omset, bonCount.toDouble(), tunai, nonTunai))
         }.sortedByDescending { it.third[0] }
     }

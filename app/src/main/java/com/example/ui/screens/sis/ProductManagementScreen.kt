@@ -444,6 +444,9 @@ fun ProductEditorDialog(
     var hargaGrosirStr by remember { mutableStateOf(productToEdit?.hargaGrosir?.toLong()?.toString() ?: "0") }
     var promoLabel by remember { mutableStateOf(productToEdit?.promoLabel ?: "") }
     var promoKeterangan by remember { mutableStateOf(productToEdit?.promoKeterangan ?: "") }
+    var promoBerlakuKelipatan by remember { mutableStateOf(productToEdit?.promoBerlakuKelipatan ?: true) }
+    var promoHanyaSatuanDasar by remember { mutableStateOf(productToEdit?.promoHanyaSatuanDasar ?: true) }
+    var promoKhususSatuan by remember { mutableStateOf(productToEdit?.promoKhususSatuan ?: "") }
 
     // Repack Fields (Karton, Dus, Pak, Slop, dll.)
     var isRepack by remember { mutableStateOf(productToEdit?.isRepack ?: false) }
@@ -1047,6 +1050,82 @@ fun ProductEditorDialog(
                                     singleLine = true,
                                     colors = tfColors
                                 )
+
+                                Spacer(modifier = Modifier.height(14.dp))
+                                Text(
+                                    "ATURAN CAKUPAN & KELIPATAN PROMO",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = RetailNavy,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                Surface(
+                                    color = Color.White,
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        // 1. Aturan Satuan Ecer vs Dus/Karton
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    "Hanya Berlaku untuk Satuan Ecer ($satuan)",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp,
+                                                    color = Color.Black
+                                                )
+                                                Text(
+                                                    if (promoHanyaSatuanDasar)
+                                                        "Promo HANYA terpotong jika kasir menjual ecer ($satuan). Satuan dus/karton/repack tidak akan ikut terpotong."
+                                                    else
+                                                        "Promo bisa terpotong untuk semua satuan (termasuk dus/repack).",
+                                                    fontSize = 11.sp,
+                                                    color = if (promoHanyaSatuanDasar) RetailGreen else Color.DarkGray
+                                                )
+                                            }
+                                            Switch(
+                                                checked = promoHanyaSatuanDasar,
+                                                onCheckedChange = { promoHanyaSatuanDasar = it }
+                                            )
+                                        }
+
+                                        HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+
+                                        // 2. Aturan Berlaku Kelipatan
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    "Promo Berlaku Kelipatan",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp,
+                                                    color = Color.Black
+                                                )
+                                                Text(
+                                                    if (promoBerlakuKelipatan)
+                                                        "Contoh: Beli 3 potongan Rp 2.000 -> Beli 6 potongan Rp 4.000, Beli 9 potongan Rp 6.000."
+                                                    else
+                                                        "Hanya berlaku 1x per transaksi/struk (Beli 3 atau lebih potongan tetap 1x saja).",
+                                                    fontSize = 11.sp,
+                                                    color = if (promoBerlakuKelipatan) RetailNavy else Color(0xFFC2185B)
+                                                )
+                                            }
+                                            Switch(
+                                                checked = promoBerlakuKelipatan,
+                                                onCheckedChange = { promoBerlakuKelipatan = it }
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1283,6 +1362,9 @@ fun ProductEditorDialog(
                                 hargaGrosir = hargaGrosirStr.toDoubleOrNull() ?: 0.0,
                                 promoLabel = promoLabel.trim(),
                                 promoKeterangan = promoKeterangan.trim(),
+                                promoBerlakuKelipatan = promoBerlakuKelipatan,
+                                promoHanyaSatuanDasar = promoHanyaSatuanDasar,
+                                promoKhususSatuan = promoKhususSatuan.trim(),
 
                                 // Repack parameters
                                 isRepack = isRepack,
