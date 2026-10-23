@@ -887,6 +887,8 @@ fun PaymentDialog(
     var voucherMessage by remember { mutableStateOf("") }
     var isVoucherSuccess by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    var showPoinCustomDialog by remember { mutableStateOf(false) }
+    var customPoinInput by remember { mutableStateOf("") }
 
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -970,58 +972,194 @@ fun PaymentDialog(
 
                 // Member Points Deduction Section
                 if (currentMember != null) {
+                    val grossTotal = grandTotal + (appliedPoin * storeConfig.nilaiPerPoin)
+                    val memenuhiMinBelanja = grossTotal >= storeConfig.minBelanjaGunakanPoin
+                    val minPoinSyarat = storeConfig.minPoinRedeem.coerceAtLeast(0)
+                    val memenuhiMinPoin = currentMember.poin >= minPoinSyarat && currentMember.poin > 0
+
+                    val maxPotonganNominalAllowed: Double = when {
+                        storeConfig.poinBisaGunakanSemua -> grossTotal
+                        else -> grossTotal * (storeConfig.poinMaksPersenBelanja.coerceIn(1.0, 100.0) / 100.0)
+                    }.let { nominal ->
+                        if (storeConfig.poinMaksPotonganNominal > 0.0) minOf(nominal, storeConfig.poinMaksPotonganNominal) else nominal
+                    }
+
+                    val maxPointsAllowed = if (storeConfig.nilaiPerPoin > 0) (maxPotonganNominalAllowed / storeConfig.nilaiPerPoin).toInt() else 0
+                    var maxUsable = currentMember.poin.coerceAtMost(maxPointsAllowed)
+                    if (storeConfig.maxPoinRedeemPerTransaksi > 0) {
+                        maxUsable = maxUsable.coerceAtMost(storeConfig.maxPoinRedeemPerTransaksi)
+                    }
+                    if (!memenuhiMinBelanja || !memenuhiMinPoin) {
+                        maxUsable = 0
+                    }
+
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = if (storeConfig.poinAktif) RetailGreenLight else Color(0xFFF1F5F9))
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Member: ${currentMember.nama} (${currentMember.poin} Poin)", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = if (storeConfig.poinAktif) RetailGreen else Color.Gray)
-                                if (!storeConfig.poinAktif) {
-                                    Text("Program poin loyalty sedang dinonaktifkan di pengaturan", fontSize = 10.sp, color = Color.Gray)
-                                } else {
-                                    val minNote = if (storeConfig.minPoinRedeem > 0) " (Min. ${storeConfig.minPoinRedeem} Poin)" else ""
-                                    Text("Tukar poin potongan harga (1 Poin = ${formatRupiah(storeConfig.nilaiPerPoin)})$minNote", fontSize = 10.sp, color = Color.Black)
-                                }
-                            }
-
-                            if (storeConfig.poinAktif) {
-                                if (appliedPoin > 0) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("-${formatRupiah(appliedPoin * storeConfig.nilaiPerPoin)}", fontWeight = FontWeight.Bold, color = Color.Black, fontSize = 12.sp)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        TextButton(onClick = { onApplyMemberPoints(0) }) {
-                                            Text("Batal", fontSize = 10.sp)
-                                        }
+                        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Member: ${currentMember.nama} (${currentMember.poin} Poin)", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = if (storeConfig.poinAktif) RetailGreen else Color.Gray)
+                                    if (!storeConfig.poinAktif) {
+                                        Text("Program poin loyalty sedang dinonaktifkan di pengaturan", fontSize = 10.sp, color = Color.Gray)
+                                    } else {
+                                        val minNote = if (storeConfig.minPoinRedeem > 0) " • Min. ${storeConfig.minPoinRedeem} pt" else ""
+                                        val capNote = if (!storeConfig.poinBisaGunakanSemua) " • Maks. ${storeConfig.poinMaksPersenBelanja.toInt()}% belanja" else " • Bisa Semua (100%)"
+                                        val minBelanjaNote = if (storeConfig.minBelanjaGunakanPoin > 0) " • Min. belanja ${formatRupiah(storeConfig.minBelanjaGunakanPoin)}" else ""
+                                        Text("1 Poin = ${formatRupiah(storeConfig.nilaiPerPoin)}$capNote$minNote$minBelanjaNote", fontSize = 10.sp, color = Color.Black)
                                     }
-                                } else {
-                                    val minPoin = storeConfig.minPoinRedeem.coerceAtLeast(0)
-                                    val canRedeem = currentMember.poin >= minPoin && currentMember.poin > 0
-                                    Button(
-                                        onClick = {
-                                            val maxPointsByTotal = if (storeConfig.nilaiPerPoin > 0) (grandTotal / storeConfig.nilaiPerPoin).toInt() else 0
-                                            var usable = currentMember.poin.coerceAtMost(maxPointsByTotal)
-                                            if (storeConfig.maxPoinRedeemPerTransaksi > 0) {
-                                                usable = usable.coerceAtMost(storeConfig.maxPoinRedeemPerTransaksi)
+                                }
+
+                                if (storeConfig.poinAktif) {
+                                    if (appliedPoin > 0) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("-${formatRupiah(appliedPoin * storeConfig.nilaiPerPoin)}", fontWeight = FontWeight.Bold, color = RetailGreen, fontSize = 12.sp)
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            TextButton(
+                                                onClick = {
+                                                    customPoinInput = appliedPoin.toString()
+                                                    showPoinCustomDialog = true
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                            ) {
+                                                Text("Ubah", fontSize = 10.sp)
                                             }
-                                            onApplyMemberPoints(usable)
-                                        },
-                                        enabled = canRedeem,
-                                        colors = ButtonDefaults.buttonColors(containerColor = RetailGreen),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                        modifier = Modifier.height(30.dp)
-                                    ) {
-                                        Text("Gunakan Poin", fontSize = 11.sp)
+                                            TextButton(
+                                                onClick = { onApplyMemberPoints(0) },
+                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                            ) {
+                                                Text("Batal", fontSize = 10.sp, color = RetailRedPrimary)
+                                            }
+                                        }
+                                    } else {
+                                        if (maxUsable > 0) {
+                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Button(
+                                                    onClick = { onApplyMemberPoints(maxUsable) },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = RetailGreen),
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                    modifier = Modifier.height(30.dp)
+                                                ) {
+                                                    Text("Gunakan Semua ($maxUsable pt)", fontSize = 10.sp)
+                                                }
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        customPoinInput = maxUsable.toString()
+                                                        showPoinCustomDialog = true
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                                    modifier = Modifier.height(30.dp)
+                                                ) {
+                                                    Text("Pilih Poin", fontSize = 10.sp)
+                                                }
+                                            }
+                                        } else {
+                                            Text(
+                                                text = when {
+                                                    !memenuhiMinBelanja -> "Min. belanja ${formatRupiah(storeConfig.minBelanjaGunakanPoin)}"
+                                                    !memenuhiMinPoin -> "Min. ${storeConfig.minPoinRedeem} Poin"
+                                                    else -> "Poin Kosong"
+                                                },
+                                                fontSize = 10.sp,
+                                                color = Color.Gray,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                     Spacer(modifier = Modifier.height(6.dp))
+
+                    // Dialog Input Custom Poin
+                    if (showPoinCustomDialog) {
+                        val maxPoints = maxUsable
+                        AlertDialog(
+                            onDismissRequest = { showPoinCustomDialog = false },
+                            title = { Text("Tentukan Poin yang Digunakan", fontWeight = FontWeight.Bold, fontSize = 15.sp) },
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Saldo Member: ${currentMember.poin} Poin (${formatRupiah(currentMember.poin * storeConfig.nilaiPerPoin)})", fontSize = 12.sp, color = GrayText)
+                                    Text(
+                                        "Maksimal Boleh Digunakan: $maxPoints Poin (-${formatRupiah(maxPoints * storeConfig.nilaiPerPoin)})" +
+                                                if (!storeConfig.poinBisaGunakanSemua) " [Batas ${storeConfig.poinMaksPersenBelanja.toInt()}% belanja]" else "",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = RetailNavy
+                                    )
+
+                                    // Tombol Preset
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        FilterChip(
+                                            selected = customPoinInput == maxPoints.toString(),
+                                            onClick = { customPoinInput = maxPoints.toString() },
+                                            label = { Text("Semua ($maxPoints pt)", fontSize = 10.sp) }
+                                        )
+                                        if (maxPoints >= 2) {
+                                            FilterChip(
+                                                selected = customPoinInput == (maxPoints / 2).toString(),
+                                                onClick = { customPoinInput = (maxPoints / 2).toString() },
+                                                label = { Text("50% (${maxPoints / 2} pt)", fontSize = 10.sp) }
+                                            )
+                                        }
+                                        if (maxPoints >= 4) {
+                                            FilterChip(
+                                                selected = customPoinInput == (maxPoints / 4).toString(),
+                                                onClick = { customPoinInput = (maxPoints / 4).toString() },
+                                                label = { Text("25% (${maxPoints / 4} pt)", fontSize = 10.sp) }
+                                            )
+                                        }
+                                    }
+
+                                    OutlinedTextField(
+                                        value = customPoinInput,
+                                        onValueChange = { input ->
+                                            val digits = input.filter { it.isDigit() }
+                                            val num = digits.toIntOrNull() ?: 0
+                                            customPoinInput = num.coerceIn(0, maxPoints).toString()
+                                        },
+                                        label = { Text("Jumlah Poin") },
+                                        suffix = { Text("Poin") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+
+                                    val enteredPoin = customPoinInput.toIntOrNull() ?: 0
+                                    val potongan = enteredPoin * storeConfig.nilaiPerPoin
+                                    Text(
+                                        "Nilai Potongan Belanja: ${formatRupiah(potongan)}",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = RetailGreen
+                                    )
+                                }
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        val enteredPoin = (customPoinInput.toIntOrNull() ?: 0).coerceIn(0, maxPoints)
+                                        onApplyMemberPoints(enteredPoin)
+                                        showPoinCustomDialog = false
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = RetailGreen)
+                                ) {
+                                    Text("Terapkan Poin")
+                                }
+                            },
+                            dismissButton = {
+                                OutlinedButton(onClick = { showPoinCustomDialog = false }) {
+                                    Text("Batal")
+                                }
+                            }
+                        )
+                    }
                 }
 
                 // Payment Method Selector Tabs: TUNAI, QRIS, CAMPURAN, WALLET, CARD
@@ -1468,7 +1606,6 @@ fun ReceiptDialog(
                         ),
                         qty = kotlin.math.abs(entity.qty),
                         selectedSatuan = entity.satuan,
-                        selectedHargaJual = entity.hargaJual,
                         isRetur = entity.qty < 0
                     )
                 }

@@ -197,10 +197,12 @@ class PosRepository(private val dao: PosDao) {
                     dao.deductMemberPoints(memberNo, poinDigunakan)
                 }
                 // Earn points based on store config belanjaPerPoin rule
-                val belanjaRule = if (storeConfig.belanjaPerPoin > 0.0) storeConfig.belanjaPerPoin else 10000.0
-                val earnedPoints = (grandTotal / belanjaRule).toInt()
-                if (earnedPoints > 0) {
-                    dao.addMemberPoints(memberNo, earnedPoints)
+                if (poinDigunakan == 0 || storeConfig.poinDapatSaatRedeem) {
+                    val belanjaRule = if (storeConfig.belanjaPerPoin > 0.0) storeConfig.belanjaPerPoin else 10000.0
+                    val earnedPoints = (grandTotal / belanjaRule).toInt()
+                    if (earnedPoints > 0) {
+                        dao.addMemberPoints(memberNo, earnedPoints)
+                    }
                 }
             }
             true

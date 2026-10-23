@@ -342,9 +342,15 @@ private fun PointsSettingsTab(
     var minPoinRedeemStr by remember(storeConfig) { mutableStateOf(storeConfig.minPoinRedeem.toString()) }
     var maxPoinRedeemStr by remember(storeConfig) { mutableStateOf(storeConfig.maxPoinRedeemPerTransaksi.toString()) }
     var poinBonusBaruStr by remember(storeConfig) { mutableStateOf(storeConfig.poinBonusMemberBaru.toString()) }
+    var poinBisaGunakanSemua by remember(storeConfig) { mutableStateOf(storeConfig.poinBisaGunakanSemua) }
+    var poinMaksPersenBelanjaStr by remember(storeConfig) { mutableStateOf(storeConfig.poinMaksPersenBelanja.toInt().toString()) }
+    var minBelanjaGunakanPoinStr by remember(storeConfig) { mutableStateOf(storeConfig.minBelanjaGunakanPoin.toLong().toString()) }
+    var poinMaksPotonganNominalStr by remember(storeConfig) { mutableStateOf(storeConfig.poinMaksPotonganNominal.toLong().toString()) }
+    var poinDapatSaatRedeem by remember(storeConfig) { mutableStateOf(storeConfig.poinDapatSaatRedeem) }
 
     // State kalkulator simulasi
     var testBelanjaStr by remember { mutableStateOf("100000") }
+    var testSaldoPoinStr by remember { mutableStateOf("500") }
     var memberSearchQuery by remember { mutableStateOf("") }
 
     val filteredMembers = remember(members, memberSearchQuery) {
@@ -415,8 +421,13 @@ private fun PointsSettingsTab(
                             Text("1 Poin = Rp ${nilaiPerPoinStr}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = RetailGreen)
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Bonus Daftar", fontSize = 10.sp, color = Color.Gray)
-                            Text("+$poinBonusBaruStr Poin", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF8E24AA))
+                            Text("Mode Potongan", fontSize = 10.sp, color = Color.Gray)
+                            Text(
+                                if (poinBisaGunakanSemua) "Bisa Semua (100%)" else "Maks $poinMaksPersenBelanjaStr%",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = Color(0xFFE65100)
+                            )
                         }
                     }
                 }
@@ -431,9 +442,9 @@ private fun PointsSettingsTab(
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        "ATURAN PEROLEHAN & PENUKARAN POIN",
+                        "1. ATURAN PEROLEHAN & NILAI POIN",
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = RetailNavy
@@ -461,29 +472,6 @@ private fun PointsSettingsTab(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = minPoinRedeemStr,
-                            onValueChange = { minPoinRedeemStr = it.filter { c -> c.isDigit() } },
-                            label = { Text("Min. Poin Redeem") },
-                            suffix = { Text("Poin") },
-                            supportingText = { Text("Syarat min. saldo poin") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-                        OutlinedTextField(
-                            value = maxPoinRedeemStr,
-                            onValueChange = { maxPoinRedeemStr = it.filter { c -> c.isDigit() } },
-                            label = { Text("Maks. Poin/Transaksi") },
-                            suffix = { Text("Poin") },
-                            supportingText = { Text("0 = tanpa batas") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
                     OutlinedTextField(
                         value = poinBonusBaruStr,
                         onValueChange = { poinBonusBaruStr = it.filter { c -> c.isDigit() } },
@@ -495,6 +483,190 @@ private fun PointsSettingsTab(
                         modifier = Modifier.fillMaxWidth()
                     )
 
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Tetap Dapat Poin Baru Saat Tukar Poin", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = RetailNavy)
+                            Text("Member tetap memperoleh poin dari sisa pembayaran transaksi saat menggunakan poin", fontSize = 10.sp, color = Color.Gray)
+                        }
+                        Switch(
+                            checked = poinDapatSaatRedeem,
+                            onCheckedChange = { poinDapatSaatRedeem = it }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    HorizontalDivider(color = Color(0xFFE2E8F0))
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Text(
+                        "2. ATURAN PEMOTONGAN BELANJA DARI POIN",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = RetailNavy
+                    )
+
+                    // Pilihan Mode: Bisa Semua (100%) vs Dibatasi Persentase
+                    Surface(
+                        color = if (poinBisaGunakanSemua) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (poinBisaGunakanSemua) Color(0xFF3B82F6) else Color(0xFFCBD5E1)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { poinBisaGunakanSemua = true }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = poinBisaGunakanSemua,
+                                onClick = { poinBisaGunakanSemua = true }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text("Dapat Digunakan Semua (100% dari Total Belanja)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = RetailNavy)
+                                Text("Poin dapat memotong total belanja secara penuh sampai Rp 0 selama saldo poin member mencukupi.", fontSize = 11.sp, color = Color.Gray)
+                            }
+                        }
+                    }
+
+                    Surface(
+                        color = if (!poinBisaGunakanSemua) Color(0xFFFFFBEB) else Color(0xFFF8FAFC),
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (!poinBisaGunakanSemua) Color(0xFFF59E0B) else Color(0xFFCBD5E1)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { poinBisaGunakanSemua = false }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = !poinBisaGunakanSemua,
+                                onClick = { poinBisaGunakanSemua = false }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text("Dibatasi Maksimal Persentase Belanja (%)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = RetailNavy)
+                                Text("Poin hanya boleh memotong maksimal sekian persen dari total belanja (contoh: maks 50% belanja).", fontSize = 11.sp, color = Color.Gray)
+                            }
+                        }
+                    }
+
+                    // Field Persentase (muncul jika tidak bisa digunakan semua)
+                    if (!poinBisaGunakanSemua) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFFEF3C7), RoundedCornerShape(8.dp))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("Tentukan Persentase Maksimal Potongan Poin:", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color(0xFF92400E))
+                            OutlinedTextField(
+                                value = poinMaksPersenBelanjaStr,
+                                onValueChange = { input ->
+                                    val digits = input.filter { it.isDigit() }
+                                    val num = digits.toIntOrNull() ?: 0
+                                    poinMaksPersenBelanjaStr = num.coerceIn(1, 100).toString()
+                                },
+                                label = { Text("Maksimal Persen Potongan Belanja") },
+                                suffix = { Text("%") },
+                                supportingText = { Text("Contoh: 50% berarti belanja Rp 100.000 maksimal dipotong Rp 50.000") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color.White,
+                                    unfocusedContainerColor = Color.White
+                                )
+                            )
+
+                            // Quick preset chips
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf(20, 30, 50, 70, 80).forEach { preset ->
+                                    FilterChip(
+                                        selected = poinMaksPersenBelanjaStr == preset.toString(),
+                                        onClick = { poinMaksPersenBelanjaStr = preset.toString() },
+                                        label = { Text("$preset%") },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = Color(0xFFF59E0B),
+                                            selectedLabelColor = Color.White
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "3. SYARAT MINIMAL & BATASAN LAINNYA",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = RetailNavy
+                    )
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = minBelanjaGunakanPoinStr,
+                            onValueChange = { minBelanjaGunakanPoinStr = it.filter { c -> c.isDigit() } },
+                            label = { Text("Min. Belanja Pakai Poin") },
+                            prefix = { Text("Rp ") },
+                            supportingText = { Text("0 = Tanpa min. belanja") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = poinMaksPotonganNominalStr,
+                            onValueChange = { poinMaksPotonganNominalStr = it.filter { c -> c.isDigit() } },
+                            label = { Text("Maks. Potongan Nominal") },
+                            prefix = { Text("Rp ") },
+                            supportingText = { Text("0 = Tanpa batas Rp") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = minPoinRedeemStr,
+                            onValueChange = { minPoinRedeemStr = it.filter { c -> c.isDigit() } },
+                            label = { Text("Min. Saldo Poin Member") },
+                            suffix = { Text("Poin") },
+                            supportingText = { Text("Syarat min. saldo member") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = maxPoinRedeemStr,
+                            onValueChange = { maxPoinRedeemStr = it.filter { c -> c.isDigit() } },
+                            label = { Text("Maks. Poin / Transaksi") },
+                            suffix = { Text("Poin") },
+                            supportingText = { Text("0 = Tanpa batas poin") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
                     Button(
                         onClick = {
                             val belanjaRule = belanjaPerPoinStr.toDoubleOrNull() ?: 10000.0
@@ -502,6 +674,9 @@ private fun PointsSettingsTab(
                             val minRedeem = minPoinRedeemStr.toIntOrNull() ?: 10
                             val maxRedeem = maxPoinRedeemStr.toIntOrNull() ?: 500
                             val bonusBaru = poinBonusBaruStr.toIntOrNull() ?: 20
+                            val persenRule = (poinMaksPersenBelanjaStr.toDoubleOrNull() ?: 100.0).coerceIn(1.0, 100.0)
+                            val minBelanjaPakai = minBelanjaGunakanPoinStr.toDoubleOrNull() ?: 0.0
+                            val maksNominalCap = poinMaksPotonganNominalStr.toDoubleOrNull() ?: 0.0
 
                             val updated = storeConfig.copy(
                                 poinAktif = poinAktif,
@@ -509,7 +684,12 @@ private fun PointsSettingsTab(
                                 nilaiPerPoin = nilaiRule,
                                 minPoinRedeem = minRedeem,
                                 maxPoinRedeemPerTransaksi = maxRedeem,
-                                poinBonusMemberBaru = bonusBaru
+                                poinBonusMemberBaru = bonusBaru,
+                                poinBisaGunakanSemua = poinBisaGunakanSemua,
+                                poinMaksPersenBelanja = if (poinBisaGunakanSemua) 100.0 else persenRule,
+                                minBelanjaGunakanPoin = minBelanjaPakai,
+                                poinMaksPotonganNominal = maksNominalCap,
+                                poinDapatSaatRedeem = poinDapatSaatRedeem
                             )
                             viewModel.updateStoreConfig(updated)
                             onShowFeedback("Pengaturan Program Poin berhasil disimpan!")
@@ -534,53 +714,119 @@ private fun PointsSettingsTab(
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Calculate, contentDescription = null, tint = RetailNavy, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("SIMULASI & KALKULATOR POIN KASIR", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = RetailNavy)
+                        Text("SIMULASI & KALKULATOR ATURAN POIN", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = RetailNavy)
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
 
-                    OutlinedTextField(
-                        value = testBelanjaStr,
-                        onValueChange = { testBelanjaStr = it.filter { c -> c.isDigit() } },
-                        label = { Text("Contoh Total Belanja Pelanggan (Rp)") },
-                        prefix = { Text("Rp ", fontWeight = FontWeight.Bold) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                    Text(
+                        "Coba masukkan nominal belanja dan saldo poin untuk menguji aturan yang Anda buat:",
+                        fontSize = 11.sp,
+                        color = Color.Gray
                     )
 
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = testBelanjaStr,
+                            onValueChange = { testBelanjaStr = it.filter { c -> c.isDigit() } },
+                            label = { Text("Total Belanja (Rp)") },
+                            prefix = { Text("Rp ", fontWeight = FontWeight.Bold) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = testSaldoPoinStr,
+                            onValueChange = { testSaldoPoinStr = it.filter { c -> c.isDigit() } },
+                            label = { Text("Saldo Poin Member") },
+                            suffix = { Text("Poin") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
                     val testBelanja = testBelanjaStr.toDoubleOrNull() ?: 0.0
+                    val testSaldoPoin = testSaldoPoinStr.toIntOrNull() ?: 0
                     val belanjaRule = belanjaPerPoinStr.toDoubleOrNull() ?: 10000.0
                     val nilaiRule = nilaiPerPoinStr.toDoubleOrNull() ?: 100.0
-                    val estimatedPoints = if (belanjaRule > 0) (testBelanja / belanjaRule).toInt() else 0
-                    val estimatedCashback = estimatedPoints * nilaiRule
-                    val percentageReward = if (testBelanja > 0) (estimatedCashback / testBelanja) * 100.0 else 0.0
+                    val minRedeem = minPoinRedeemStr.toIntOrNull() ?: 10
+                    val maxRedeem = maxPoinRedeemStr.toIntOrNull() ?: 500
+                    val persenLimit = if (poinBisaGunakanSemua) 100.0 else (poinMaksPersenBelanjaStr.toDoubleOrNull() ?: 100.0).coerceIn(1.0, 100.0)
+                    val minBelanjaPakai = minBelanjaGunakanPoinStr.toDoubleOrNull() ?: 0.0
+                    val maksNominalCap = poinMaksPotonganNominalStr.toDoubleOrNull() ?: 0.0
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    // Hitung poin didapat
+                    val estimatedPoints = if (belanjaRule > 0) (testBelanja / belanjaRule).toInt() else 0
+
+                    // Hitung batas penukaran poin
+                    val canUsePoints = testBelanja >= minBelanjaPakai && testSaldoPoin >= minRedeem && testSaldoPoin > 0
+
+                    val maxPotonganByPersen = testBelanja * (persenLimit / 100.0)
+                    var maxPotonganAllowed = maxPotonganByPersen
+                    if (maksNominalCap > 0.0) {
+                        maxPotonganAllowed = minOf(maxPotonganAllowed, maksNominalCap)
+                    }
+
+                    val maxPointsAllowed = if (nilaiRule > 0) (maxPotonganAllowed / nilaiRule).toInt() else 0
+                    var usablePoints = testSaldoPoin.coerceAtMost(maxPointsAllowed)
+                    if (maxRedeem > 0) {
+                        usablePoints = usablePoints.coerceAtMost(maxRedeem)
+                    }
+                    if (!canUsePoints) {
+                        usablePoints = 0
+                    }
+
+                    val actualDiscount = usablePoints * nilaiRule
+                    val sisaBayar = maxOf(0.0, testBelanja - actualDiscount)
+
                     Surface(
                         color = Color.White,
                         shape = RoundedCornerShape(8.dp),
                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceAround
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Poin Diperoleh", fontSize = 11.sp, color = Color.Gray)
-                                Text("$estimatedPoints Poin", fontWeight = FontWeight.Black, fontSize = 15.sp, color = RetailNavy)
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Poin Diperoleh dari Belanja:", fontSize = 12.sp, color = Color.Gray)
+                                Text("+$estimatedPoints Poin", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = RetailNavy)
                             }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Nilai Diskon Potongan", fontSize = 11.sp, color = Color.Gray)
-                                Text(formatRupiah(estimatedCashback), fontWeight = FontWeight.Black, fontSize = 15.sp, color = RetailGreen)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Maksimal Poin Boleh Dipakai:", fontSize = 12.sp, color = Color.Gray)
+                                Text("$usablePoints Poin (dari $testSaldoPoin Poin)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFFE65100))
                             }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Nilai Efektif", fontSize = 11.sp, color = Color.Gray)
-                                Text(String.format(Locale.US, "%.1f%%", percentageReward), fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFFE65100))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Potongan Belanja:", fontSize = 12.sp, color = Color.Gray)
+                                Text("-${formatRupiah(actualDiscount)} (${if (testBelanja > 0) String.format(Locale.US, "%.1f%%", (actualDiscount / testBelanja) * 100) else "0%"})", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = RetailGreen)
+                            }
+                            HorizontalDivider(color = Color(0xFFF1F5F9))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Sisa yang Harus Dibayar:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = RetailNavy)
+                                Text(formatRupiah(sisaBayar), fontWeight = FontWeight.Black, fontSize = 16.sp, color = RetailNavy)
+                            }
+
+                            if (!canUsePoints && testSaldoPoin > 0) {
+                                Text(
+                                    text = if (testBelanja < minBelanjaPakai) "ℹ Belanja belum mencapai syarat minimal ${formatRupiah(minBelanjaPakai)}" else "ℹ Saldo poin belum mencapai syarat minimal $minRedeem Poin",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFFB45309),
+                                    fontWeight = FontWeight.Medium
+                                )
                             }
                         }
                     }

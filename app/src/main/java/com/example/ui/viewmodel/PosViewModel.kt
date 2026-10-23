@@ -2187,7 +2187,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateMember(member: MemberEntity, onDone: () -> Unit) {
+    fun updateMember(member: MemberEntity, onDone: () -> Unit = {}) {
         viewModelScope.launch {
             repository.updateMember(member)
             onDone()
@@ -2695,7 +2695,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             keterangan = keterangan,
             items = items,
             costMethod = "AVERAGE",
-            onDone = onDone
+            onDone = { _ -> onDone() }
         )
     }
 

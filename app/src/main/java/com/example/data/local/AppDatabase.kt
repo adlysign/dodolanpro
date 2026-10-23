@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
         SupplierEntity::class,
         StoreBranchEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -135,6 +135,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE store_config ADD COLUMN poinBisaGunakanSemua INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN poinMaksPersenBelanja REAL NOT NULL DEFAULT 100.0")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN minBelanjaGunakanPoin REAL NOT NULL DEFAULT 0.0")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN poinMaksPotonganNominal REAL NOT NULL DEFAULT 0.0")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN poinDapatSaatRedeem INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE store_config ADD COLUMN poinModeInputKasir TEXT NOT NULL DEFAULT 'BEBAS'")
+            }
+        }
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val appContext = context.applicationContext
@@ -143,7 +154,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "dodolan_pro_db"
                 )
-                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                     .fallbackToDestructiveMigration()
                     .addCallback(DatabaseCallback(appContext, scope))
                     .build()
@@ -151,6 +162,11 @@ abstract class AppDatabase : RoomDatabase() {
                 instance
             }
         }
+
+        fun getInstance(context: Context): AppDatabase {
+            return getDatabase(context, CoroutineScope(Dispatchers.IO))
+        }
+
 
         private class DatabaseCallback(
             private val context: Context,
