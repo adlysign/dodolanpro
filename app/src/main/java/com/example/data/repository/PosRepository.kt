@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class PosRepository(private val dao: PosDao) {
 
@@ -25,6 +28,73 @@ class PosRepository(private val dao: PosDao) {
     val allMembers: Flow<List<MemberEntity>> = dao.getAllMembers()
     val allCashiers: Flow<List<CashierUserEntity>> = dao.getAllCashiers()
     val allShiftConfigs: Flow<List<ShiftConfigEntity>> = dao.getAllShiftConfigs()
+    val allReceivables: Flow<List<ReceivableEntity>> = dao.getAllReceivables()
+    val allReceivablePayments: Flow<List<ReceivablePaymentEntity>> = dao.getAllReceivablePayments()
+
+    suspend fun getAllReceivablesList(): List<ReceivableEntity> = withContext(Dispatchers.IO) {
+        dao.getAllReceivablesList()
+    }
+
+    suspend fun getReceivableById(id: Long): ReceivableEntity? = withContext(Dispatchers.IO) {
+        dao.getReceivableById(id)
+    }
+
+    suspend fun getPaymentsForReceivable(receivableId: Long): List<ReceivablePaymentEntity> = withContext(Dispatchers.IO) {
+        dao.getPaymentsForReceivableList(receivableId)
+    }
+
+    suspend fun addReceivable(receivable: ReceivableEntity): Long = withContext(Dispatchers.IO) {
+        dao.insertReceivable(receivable)
+    }
+
+    suspend fun updateReceivable(receivable: ReceivableEntity) = withContext(Dispatchers.IO) {
+        dao.updateReceivable(receivable)
+    }
+
+    suspend fun deleteReceivable(id: Long) = withContext(Dispatchers.IO) {
+        dao.deleteReceivableById(id)
+        dao.deletePaymentsByReceivableId(id)
+    }
+
+    suspend fun payReceivable(
+        receivableId: Long,
+        amount: Double,
+        method: String,
+        notes: String,
+        kasirNama: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val rec = dao.getReceivableById(receivableId) ?: return@withContext false
+            val newPaid = rec.paidAmount + amount
+            val newRemaining = (rec.totalAmount - newPaid).coerceAtLeast(0.0)
+            val newStatus = if (newRemaining <= 0.0) "LUNAS" else "SEBAGIAN"
+            val todayStr = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date())
+
+            val payment = ReceivablePaymentEntity(
+                receivableId = receivableId,
+                bonNo = rec.bonNo,
+                paymentAmount = amount,
+                paymentMethod = method,
+                paymentDate = todayStr,
+                notes = notes,
+                kasirNama = kasirNama,
+                timestamp = System.currentTimeMillis()
+            )
+            dao.insertReceivablePayment(payment)
+
+            val updatedRec = rec.copy(
+                paidAmount = newPaid,
+                remainingAmount = newRemaining,
+                status = newStatus,
+                updatedAt = System.currentTimeMillis()
+            )
+            dao.updateReceivable(updatedRec)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
 
     suspend fun getProductByPluOrBarcode(code: String): ProductEntity? = withContext(Dispatchers.IO) {
         dao.getProductByPluOrBarcode(code.trim())
@@ -150,7 +220,12 @@ class PosRepository(private val dao: PosDao) {
         items: List<TransactionItemEntity>,
         voucherDiberikan: String = "",
         voucherDiberikanNominal: Double = 0.0,
-        voucherDiberikanExpiry: String = ""
+        voucherDiberikanExpiry: String = "",
+        piutangCustomerName: String = "",
+        piutangCustomerPhone: String = "",
+        piutangCustomerAddress: String = "",
+        piutangDueDate: String = "",
+        piutangNotes: String = ""
     ): Boolean = withContext(Dispatchers.IO) {
         try {
             val tx = TransactionEntity(
@@ -179,6 +254,44 @@ class PosRepository(private val dao: PosDao) {
             )
             dao.insertTransaction(tx)
             dao.insertTransactionItems(items)
+
+            // Jika cara bayar adalah PIUTANG, catat piutang debitur di tabel receivables
+            if (caraBayar.equals("PIUTANG", ignoreCase = true)) {
+                val sisa = (grandTotal - bayarTunai).coerceAtLeast(0.0)
+                val status = if (sisa <= 0.0) "LUNAS" else if (bayarTunai > 0.0) "SEBAGIAN" else "BELUM_LUNAS"
+                val todayStr = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date())
+                val rec = ReceivableEntity(
+                    bonNo = bonNo,
+                    customerName = piutangCustomerName.ifBlank { "Pelanggan Umum" },
+                    customerPhone = piutangCustomerPhone,
+                    customerAddress = piutangCustomerAddress,
+                    memberNo = memberNo,
+                    totalAmount = grandTotal,
+                    paidAmount = bayarTunai,
+                    remainingAmount = sisa,
+                    status = status,
+                    tanggal = todayStr,
+                    dueDate = piutangDueDate.ifBlank { todayStr },
+                    notes = piutangNotes,
+                    kasirNik = kasirNik,
+                    kasirNama = kasirNama
+                )
+                val recId = dao.insertReceivable(rec)
+                if (bayarTunai > 0.0) {
+                    dao.insertReceivablePayment(
+                        ReceivablePaymentEntity(
+                            receivableId = recId,
+                            bonNo = bonNo,
+                            paymentAmount = bayarTunai,
+                            paymentMethod = "TUNAI",
+                            paymentDate = todayStr,
+                            notes = "Uang Muka (DP) Transaksi Kasir",
+                            kasirNama = kasirNama,
+                            timestamp = System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
 
             // Tandai voucher yang digunakan sebagai 'SUDAH DIGUNAKAN'
             if (kodeVoucher.isNotBlank()) {
@@ -235,6 +348,12 @@ class PosRepository(private val dao: PosDao) {
                     totalTunai += (netCashPortion - tx.donasi).coerceAtLeast(0.0)
                     val nonCashPortion = if (tx.bayarNonTunai > 0.0) tx.bayarNonTunai else (tx.grandTotal - netCashPortion).coerceAtLeast(0.0)
                     totalNonTunai += nonCashPortion
+                }
+                "PIUTANG" -> {
+                    // Hanya uang muka (DP) tunai yang dihitung ke kas fisik laci kasir
+                    if (tx.bayarTunai > 0.0) {
+                        totalTunai += tx.bayarTunai
+                    }
                 }
                 else -> {
                     totalNonTunai += tx.grandTotal
@@ -310,6 +429,57 @@ class PosRepository(private val dao: PosDao) {
                 dao.addStock(item.plu, item.qty * konversi)
             }
         }
+        // Jika ada DP / Uang Muka pada pembelian tempo, catat pembayaran awalnya
+        if (purchase.statusBayar != "LUNAS" && purchase.uangMuka > 0) {
+            val dpPayment = PurchasePaymentEntity(
+                noFakturBeli = purchase.noFakturBeli,
+                nominal = purchase.uangMuka,
+                caraBayar = "DP (UANG MUKA)",
+                tanggal = purchase.tanggal,
+                catatan = "Pembayaran Uang Muka (DP) Pembelian",
+                petugasNama = purchase.petugasNama,
+                timestamp = purchase.timestamp
+            )
+            dao.insertPurchasePayment(dpPayment)
+        }
+    }
+
+    // Purchase Debt & Payments (Hutang / Piutang Pembelian)
+    val allPurchasePayments: Flow<List<PurchasePaymentEntity>> = dao.getAllPurchasePayments()
+
+    fun getPaymentsForPurchase(faktur: String): Flow<List<PurchasePaymentEntity>> = dao.getPaymentsForPurchase(faktur)
+
+    suspend fun updatePurchase(purchase: PurchaseEntity) = withContext(Dispatchers.IO) {
+        dao.updatePurchase(purchase)
+    }
+
+    suspend fun recordPurchasePayment(
+        noFakturBeli: String,
+        amount: Double,
+        method: String,
+        notes: String,
+        petugasNama: String
+    ) = withContext(Dispatchers.IO) {
+        val purchase = dao.getPurchaseByFaktur(noFakturBeli) ?: return@withContext
+        val newSisa = maxOf(0.0, purchase.sisaHutang - amount)
+        val newStatus = if (newSisa <= 0.0) "LUNAS" else "SEBAGIAN"
+        val updatedPurchase = purchase.copy(
+            sisaHutang = newSisa,
+            statusBayar = newStatus
+        )
+        dao.updatePurchase(updatedPurchase)
+
+        val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
+        val payment = PurchasePaymentEntity(
+            noFakturBeli = noFakturBeli,
+            nominal = amount,
+            caraBayar = method,
+            tanggal = dateStr,
+            catatan = notes,
+            petugasNama = petugasNama,
+            timestamp = System.currentTimeMillis()
+        )
+        dao.insertPurchasePayment(payment)
     }
 
     // Suppliers
@@ -595,6 +765,8 @@ class PosRepository(private val dao: PosDao) {
         dao.clearMembers()
         dao.clearCashiers()
         dao.clearShiftConfigs()
+        dao.clearReceivables()
+        dao.clearReceivablePayments()
         com.example.data.local.AppDatabase.populateInitialData(dao)
     }
 

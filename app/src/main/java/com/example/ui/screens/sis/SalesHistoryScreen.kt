@@ -159,6 +159,7 @@ fun SalesHistoryScreen(
                                             color = when (tx.caraBayar) {
                                                 "TUNAI" -> Color(0xFFE8F5E9)
                                                 "QRIS" -> Color(0xFFE3F2FD)
+                                                "PIUTANG" -> Color(0xFFFFEBEE)
                                                 else -> Color(0xFFFFF3E0)
                                             },
                                             shape = RoundedCornerShape(4.dp)
@@ -167,7 +168,7 @@ fun SalesHistoryScreen(
                                                 tx.caraBayar,
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color.Black,
+                                                color = if (tx.caraBayar == "PIUTANG") Color(0xFFC62828) else Color.Black,
                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                             )
                                         }

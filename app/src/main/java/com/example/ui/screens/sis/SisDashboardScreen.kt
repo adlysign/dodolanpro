@@ -49,6 +49,7 @@ fun SisDashboardScreen(
     val context = LocalContext.current
     val storeConfig by viewModel.storeConfig.collectAsState()
     val allTransactions by viewModel.allTransactions.collectAsState()
+    val allReceivables by viewModel.allReceivables.collectAsState()
     val syncConfig by viewModel.syncConfig.collectAsState()
 
     val currentCashier by viewModel.currentCashier.collectAsState()
@@ -70,12 +71,21 @@ fun SisDashboardScreen(
     }
 
     // Menu list: Jika paket PRO aktif, menu sinkronisasi multi-device TIDAK dimunculkan
-    val menuItems = remember(storeConfig.licenseType, storeConfig.isLicensed, allTransactions.size) {
+    val menuItems = remember(storeConfig.licenseType, storeConfig.isLicensed, allTransactions.size, allReceivables.size) {
+        val unpaidCount = allReceivables.count { !it.status.equals("LUNAS", ignoreCase = true) }
         val list = mutableListOf(
             SisMenuItem("Kasir POS", "Buka Mesin Kasir & Transaksi", Icons.Default.PointOfSale, RetailRedPrimary, PosNavDestination.KASIR, "menu_kasir"),
             SisMenuItem("Produk & Harga", "Master Barang, Repack & Promo", Icons.Default.Inventory2, RetailNavy, PosNavDestination.PRODUK, "menu_produk"),
             SisMenuItem("Cetak Label Rak", "Label Harga A4/F4 & Rak", Icons.Default.QrCode2, Color(0xFF00897B), PosNavDestination.CETAK_LABEL_HARGA, "menu_cetak_label"),
             SisMenuItem("Riwayat Penjualan", "${allTransactions.size} Transaksi Tersimpan", Icons.Default.ReceiptLong, Color(0xFF1E88E5), PosNavDestination.PENJUALAN, "menu_penjualan"),
+            SisMenuItem(
+                "Piutang Pelanggan",
+                if (unpaidCount > 0) "$unpaidCount Tagihan Belum Lunas" else "Kasbon, Cicilan & Jatuh Tempo",
+                Icons.Default.CreditScore,
+                Color(0xFFE65100),
+                PosNavDestination.PIUTANG,
+                "menu_piutang"
+            ),
             SisMenuItem("Pembelian Barang", "Input Pembelian dari Supplier", Icons.Default.ShoppingBag, Color(0xFFFB8C00), PosNavDestination.PEMBELIAN, "menu_pembelian"),
             SisMenuItem("Retur", "Retur Penjualan & Retur Pembelian", Icons.Default.AssignmentReturn, Color(0xFFE53935), PosNavDestination.RETUR_PEMBELIAN, "menu_retur"),
             SisMenuItem("Stok Opname", "Penyesuaian & Koreksi Fisik", Icons.Default.FactCheck, Color(0xFF6D4C41), PosNavDestination.STOK_OPNAME, "menu_stok_opname"),

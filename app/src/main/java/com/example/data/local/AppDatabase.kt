@@ -31,9 +31,12 @@ import kotlinx.coroutines.launch
         PurchaseOrderEntity::class,
         VoucherEntity::class,
         SupplierEntity::class,
-        StoreBranchEntity::class
+        StoreBranchEntity::class,
+        ReceivableEntity::class,
+        ReceivablePaymentEntity::class,
+        PurchasePaymentEntity::class
     ],
-    version = 15,
+    version = 17,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -146,6 +149,65 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS receivables (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        bonNo TEXT NOT NULL DEFAULT '',
+                        customerName TEXT NOT NULL,
+                        customerPhone TEXT NOT NULL DEFAULT '',
+                        customerAddress TEXT NOT NULL DEFAULT '',
+                        memberNo TEXT NOT NULL DEFAULT '',
+                        totalAmount REAL NOT NULL DEFAULT 0.0,
+                        paidAmount REAL NOT NULL DEFAULT 0.0,
+                        remainingAmount REAL NOT NULL DEFAULT 0.0,
+                        status TEXT NOT NULL DEFAULT 'BELUM_LUNAS',
+                        tanggal TEXT NOT NULL DEFAULT '',
+                        dueDate TEXT NOT NULL DEFAULT '',
+                        notes TEXT NOT NULL DEFAULT '',
+                        kasirNik TEXT NOT NULL DEFAULT '',
+                        kasirNama TEXT NOT NULL DEFAULT '',
+                        createdAt INTEGER NOT NULL DEFAULT 0,
+                        updatedAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS receivable_payments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        receivableId INTEGER NOT NULL,
+                        bonNo TEXT NOT NULL DEFAULT '',
+                        paymentAmount REAL NOT NULL DEFAULT 0.0,
+                        paymentMethod TEXT NOT NULL DEFAULT 'TUNAI',
+                        paymentDate TEXT NOT NULL DEFAULT '',
+                        notes TEXT NOT NULL DEFAULT '',
+                        kasirNama TEXT NOT NULL DEFAULT '',
+                        timestamp INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+            }
+        }
+
+        private val MIGRATION_16_17 = object : androidx.room.migration.Migration(16, 17) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE purchases ADD COLUMN uangMuka REAL NOT NULL DEFAULT 0.0")
+                database.execSQL("ALTER TABLE purchases ADD COLUMN sisaHutang REAL NOT NULL DEFAULT 0.0")
+                database.execSQL("ALTER TABLE purchases ADD COLUMN jatuhTempo TEXT NOT NULL DEFAULT ''")
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS purchase_payments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        noFakturBeli TEXT NOT NULL DEFAULT '',
+                        nominal REAL NOT NULL DEFAULT 0.0,
+                        caraBayar TEXT NOT NULL DEFAULT 'TUNAI',
+                        tanggal TEXT NOT NULL DEFAULT '',
+                        catatan TEXT NOT NULL DEFAULT '',
+                        petugasNama TEXT NOT NULL DEFAULT '',
+                        timestamp INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val appContext = context.applicationContext
@@ -154,7 +216,11 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "dodolan_pro_db"
                 )
-                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+                    .addMigrations(
+                        MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
+                        MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
+                        MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17
+                    )
                     .fallbackToDestructiveMigration()
                     .addCallback(DatabaseCallback(appContext, scope))
                     .build()
@@ -309,6 +375,93 @@ abstract class AppDatabase : RoomDatabase() {
                     StoreBranchEntity(kodeToko = "TKG-004", namaToko = "Agen Grosir Rokok & Kopi Sentosa", alamat = "Jl. Mangga Dua No. 8", telepon = "0817-7777-8888", keterangan = "Agen Grosir Rokok & Kopi")
                 )
             )
+
+            // Seed initial demo receivables
+            dao.insertReceivables(
+                listOf(
+                    ReceivableEntity(
+                        bonNo = "BON-20261020-001",
+                        customerName = "Warung Bu Siti",
+                        customerPhone = "0812-3344-5566",
+                        customerAddress = "Jl. Melati No. 12 (Sebelah Masjid)",
+                        memberNo = "MBR-0001",
+                        totalAmount = 350000.0,
+                        paidAmount = 100000.0,
+                        remainingAmount = 250000.0,
+                        status = "SEBAGIAN",
+                        tanggal = todayStr,
+                        dueDate = expFuture,
+                        notes = "Kasbon sembako warung & minyak goreng",
+                        kasirNik = "001",
+                        kasirNama = "Administrator"
+                    ),
+                    ReceivableEntity(
+                        bonNo = "BON-20261015-002",
+                        customerName = "Bpk. Hendra Gunawan",
+                        customerPhone = "0813-9876-5432",
+                        customerAddress = "Komplek Perumahan Griya Indah Blok C3",
+                        memberNo = "MBR-0002",
+                        totalAmount = 145000.0,
+                        paidAmount = 0.0,
+                        remainingAmount = 145000.0,
+                        status = "BELUM_LUNAS",
+                        tanggal = "15/10/2026",
+                        dueDate = expPast,
+                        notes = "Belanja kebutuhan bulanan keluarga",
+                        kasirNik = "002",
+                        kasirNama = "Kasir 1 (Siti)"
+                    ),
+                    ReceivableEntity(
+                        bonNo = "BON-20261010-003",
+                        customerName = "Ibu Sri Wahyuni",
+                        customerPhone = "0856-1122-3344",
+                        customerAddress = "Jl. Mawar RT 02/04 No. 5",
+                        memberNo = "MBR-0003",
+                        totalAmount = 200000.0,
+                        paidAmount = 200000.0,
+                        remainingAmount = 0.0,
+                        status = "LUNAS",
+                        tanggal = "10/10/2026",
+                        dueDate = "20/10/2026",
+                        notes = "Lunas via transfer BCA",
+                        kasirNik = "001",
+                        kasirNama = "Administrator"
+                    )
+                )
+            )
+
+            // Seed sample purchase with tempo / piutang hutang
+            dao.insertPurchase(
+                PurchaseEntity(
+                    noFakturBeli = "FB-20261022-001",
+                    supplierNama = "DC SAT CILEUNGSI",
+                    tanggal = todayStr,
+                    totalBeli = 1500000.0,
+                    statusBayar = "SEBAGIAN",
+                    keterangan = "Kulakan minyak goreng, gula pasir, mie instan (Tempo 30 Hari)",
+                    timestamp = System.currentTimeMillis() - 86400000L,
+                    totalItem = 25,
+                    totalNominal = 1500000.0,
+                    kasirNik = "001",
+                    petugasNama = "Administrator",
+                    tokoTujuan = "Supplier",
+                    uangMuka = 500000.0,
+                    sisaHutang = 1000000.0,
+                    jatuhTempo = expFuture
+                )
+            )
+            dao.insertPurchasePayment(
+                PurchasePaymentEntity(
+                    noFakturBeli = "FB-20261022-001",
+                    nominal = 500000.0,
+                    caraBayar = "DP (UANG MUKA)",
+                    tanggal = todayStr,
+                    catatan = "Uang muka dibayar saat pengiriman barang",
+                    petugasNama = "Administrator",
+                    timestamp = System.currentTimeMillis() - 86400000L
+                )
+            )
         }
     }
 }
+

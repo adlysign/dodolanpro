@@ -494,14 +494,17 @@ data class PurchaseEntity(
     val supplierNama: String,
     val tanggal: String,
     val totalBeli: Double,
-    val statusBayar: String = "LUNAS",
+    val statusBayar: String = "LUNAS", // LUNAS, TEMPO, SEBAGIAN
     val keterangan: String = "",
     val timestamp: Long = System.currentTimeMillis(),
     val totalItem: Int = 1,
     val totalNominal: Double = totalBeli,
     val kasirNik: String = "ADMIN",
     val petugasNama: String = "Admin / Petugas Gudang",
-    val tokoTujuan: String = "Toko Utama"
+    val tokoTujuan: String = "Toko Utama",
+    val uangMuka: Double = 0.0,
+    val sisaHutang: Double = 0.0,
+    val jatuhTempo: String = ""
 )
 
 @Entity(tableName = "purchase_items")
@@ -516,6 +519,18 @@ data class PurchaseItemEntity(
     val subtotal: Double,
     val satuan: String = "PCS",
     val konversi: Int = 1
+)
+
+@Entity(tableName = "purchase_payments")
+data class PurchasePaymentEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val noFakturBeli: String,
+    val nominal: Double = 0.0,
+    val caraBayar: String = "TUNAI",
+    val tanggal: String = "",
+    val catatan: String = "",
+    val petugasNama: String = "",
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "return_docs")
@@ -628,3 +643,49 @@ data class VoucherEntity(
     }
 }
 
+@Entity(tableName = "receivables")
+data class ReceivableEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val bonNo: String = "",
+    val customerName: String,
+    val customerPhone: String = "",
+    val customerAddress: String = "",
+    val memberNo: String = "",
+    val totalAmount: Double,
+    val paidAmount: Double = 0.0,
+    val remainingAmount: Double = totalAmount,
+    val status: String = "BELUM_LUNAS", // BELUM_LUNAS, SEBAGIAN, LUNAS
+    val tanggal: String = "",
+    val dueDate: String = "", // Format: "dd/MM/yyyy"
+    val notes: String = "",
+    val kasirNik: String = "",
+    val kasirNama: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+) {
+    fun isOverdue(): Boolean {
+        if (status.equals("LUNAS", ignoreCase = true) || dueDate.isBlank()) return false
+        return try {
+            val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+            val dDate = sdf.parse(dueDate)
+            val todayStr = sdf.format(java.util.Date())
+            val today = sdf.parse(todayStr)
+            dDate != null && today != null && today.after(dDate)
+        } catch (_: Exception) {
+            false
+        }
+    }
+}
+
+@Entity(tableName = "receivable_payments")
+data class ReceivablePaymentEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val receivableId: Long,
+    val bonNo: String = "",
+    val paymentAmount: Double,
+    val paymentMethod: String = "TUNAI", // TUNAI, TRANSFER, QRIS, DEBIT
+    val paymentDate: String = "",
+    val notes: String = "",
+    val kasirNama: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)

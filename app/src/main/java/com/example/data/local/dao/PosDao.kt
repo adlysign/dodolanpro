@@ -172,14 +172,30 @@ interface PosDao {
     @Query("SELECT * FROM purchases ORDER BY timestamp DESC")
     suspend fun getAllPurchasesList(): List<PurchaseEntity>
 
+    @Query("SELECT * FROM purchases WHERE noFakturBeli = :faktur LIMIT 1")
+    suspend fun getPurchaseByFaktur(faktur: String): PurchaseEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPurchase(purchase: PurchaseEntity)
+
+    @Update
+    suspend fun updatePurchase(purchase: PurchaseEntity)
 
     @Query("SELECT * FROM purchase_items WHERE noFakturBeli = :faktur")
     suspend fun getItemsForPurchase(faktur: String): List<PurchaseItemEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPurchaseItems(items: List<PurchaseItemEntity>)
+
+    // Purchase Debt Payments (Cicilan / Pelunasan Hutang Pembelian)
+    @Query("SELECT * FROM purchase_payments ORDER BY timestamp DESC")
+    fun getAllPurchasePayments(): Flow<List<PurchasePaymentEntity>>
+
+    @Query("SELECT * FROM purchase_payments WHERE noFakturBeli = :faktur ORDER BY timestamp ASC")
+    fun getPaymentsForPurchase(faktur: String): Flow<List<PurchasePaymentEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPurchasePayment(payment: PurchasePaymentEntity)
 
     // Stock Opname
     @Query("SELECT * FROM stock_opname_records ORDER BY timestamp DESC")
@@ -385,4 +401,64 @@ interface PosDao {
 
     @Query("DELETE FROM vouchers")
     suspend fun clearVouchers()
+
+    // Receivables (Piutang Pelanggan)
+    @Query("SELECT * FROM receivables ORDER BY createdAt DESC")
+    fun getAllReceivables(): Flow<List<ReceivableEntity>>
+
+    @Query("SELECT * FROM receivables ORDER BY createdAt DESC")
+    suspend fun getAllReceivablesList(): List<ReceivableEntity>
+
+    @Query("SELECT * FROM receivables WHERE id = :id LIMIT 1")
+    suspend fun getReceivableById(id: Long): ReceivableEntity?
+
+    @Query("SELECT * FROM receivables WHERE bonNo = :bonNo LIMIT 1")
+    suspend fun getReceivableByBonNo(bonNo: String): ReceivableEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReceivable(receivable: ReceivableEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReceivables(receivables: List<ReceivableEntity>)
+
+    @Update
+    suspend fun updateReceivable(receivable: ReceivableEntity)
+
+    @Delete
+    suspend fun deleteReceivable(receivable: ReceivableEntity)
+
+    @Query("DELETE FROM receivables WHERE id = :id")
+    suspend fun deleteReceivableById(id: Long)
+
+    @Query("DELETE FROM receivables")
+    suspend fun clearReceivables()
+
+    // Receivable Payments (Cicilan & Pelunasan Piutang)
+    @Query("SELECT * FROM receivable_payments WHERE receivableId = :receivableId ORDER BY timestamp DESC")
+    fun getPaymentsForReceivable(receivableId: Long): Flow<List<ReceivablePaymentEntity>>
+
+    @Query("SELECT * FROM receivable_payments WHERE receivableId = :receivableId ORDER BY timestamp DESC")
+    suspend fun getPaymentsForReceivableList(receivableId: Long): List<ReceivablePaymentEntity>
+
+    @Query("SELECT * FROM receivable_payments ORDER BY timestamp DESC")
+    fun getAllReceivablePayments(): Flow<List<ReceivablePaymentEntity>>
+
+    @Query("SELECT * FROM receivable_payments ORDER BY timestamp DESC")
+    suspend fun getAllReceivablePaymentsList(): List<ReceivablePaymentEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReceivablePayment(payment: ReceivablePaymentEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReceivablePayments(payments: List<ReceivablePaymentEntity>)
+
+    @Delete
+    suspend fun deleteReceivablePayment(payment: ReceivablePaymentEntity)
+
+    @Query("DELETE FROM receivable_payments WHERE receivableId = :receivableId")
+    suspend fun deletePaymentsByReceivableId(receivableId: Long)
+
+    @Query("DELETE FROM receivable_payments")
+    suspend fun clearReceivablePayments()
 }
+

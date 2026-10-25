@@ -77,6 +77,7 @@ fun PosScreen(
     val storeConfig by viewModel.storeConfig.collectAsState()
     val pendingCarts by viewModel.pendingCarts.collectAsState()
     val appliedPoin by viewModel.appliedPoin.collectAsState()
+    val allMembers by viewModel.allMembers.collectAsState()
 
     // Shift and Lock States
     val isUserLoggedIn by viewModel.isUserLoggedIn.collectAsState()
@@ -995,12 +996,32 @@ fun PosScreen(
             currentMember = currentMember,
             storeConfig = storeConfig,
             appliedPoin = appliedPoin,
+            members = allMembers,
             onApplyMemberPoints = { viewModel.applyMemberPoints(it) },
             onApplyVoucher = { viewModel.applyVoucher(it) },
             onDismiss = { showPaymentDialog = false },
             onProcessPayment = { caraBayar, tunai, nonTunai, ref ->
                 val currentCartSnapshot = cartItems.toList()
                 viewModel.processCheckout(caraBayar, tunai, nonTunai, ref) { ok, msg, tx ->
+                    if (ok && tx != null) {
+                        lastCompletedCartItems = currentCartSnapshot
+                        showPaymentDialog = false
+                        showReceiptDialog = tx
+                    } else {
+                        feedbackMessage = msg
+                    }
+                }
+            },
+            onProcessPaymentPiutang = { custName, custPhone, custAddress, dueDate, notes, dpAmount ->
+                val currentCartSnapshot = cartItems.toList()
+                viewModel.processCheckoutPiutang(
+                    customerName = custName,
+                    customerPhone = custPhone,
+                    customerAddress = custAddress,
+                    dueDate = dueDate,
+                    notes = notes,
+                    dpAmount = dpAmount
+                ) { ok, msg, tx ->
                     if (ok && tx != null) {
                         lastCompletedCartItems = currentCartSnapshot
                         showPaymentDialog = false

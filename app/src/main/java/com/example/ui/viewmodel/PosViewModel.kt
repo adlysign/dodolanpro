@@ -35,7 +35,8 @@ enum class PosNavDestination {
     PENGATURAN_PRINTER,
     BACKUP_RESTORE,
     SIS_DASHBOARD,
-    SINKRONISASI_MULTI_DEVICE
+    SINKRONISASI_MULTI_DEVICE,
+    PIUTANG
 }
 
 sealed class PosShortcutEvent {
@@ -318,6 +319,7 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             PosNavDestination.EDIT_TOKO -> cashier.canManageSettings
             PosNavDestination.BACKUP_RESTORE -> cashier.canBackupRestore
             PosNavDestination.SINKRONISASI_MULTI_DEVICE -> cashier.canManageSettings
+            PosNavDestination.PIUTANG -> cashier.canAccessSis || cashier.isAdmin() || cashier.canViewLaporan
         }
     }
 
@@ -444,6 +446,9 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     val allPurchases: StateFlow<List<PurchaseEntity>> = repository.allPurchases
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val allPurchasePayments: StateFlow<List<PurchasePaymentEntity>> = repository.allPurchasePayments
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val allStockOpnames: StateFlow<List<StockOpnameEntity>> = repository.allStockOpnames
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -458,6 +463,15 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
 
     val allStoreBranches: StateFlow<List<StoreBranchEntity>> = repository.getAllStoreBranches()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allReceivables: StateFlow<List<ReceivableEntity>> = repository.allReceivables
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allReceivablePayments: StateFlow<List<ReceivablePaymentEntity>> = repository.allReceivablePayments
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val receivables: StateFlow<List<ReceivableEntity>> get() = allReceivables
+    val receivablePayments: StateFlow<List<ReceivablePaymentEntity>> get() = allReceivablePayments
 
     val allTokoGrosir: StateFlow<List<StoreBranchEntity>> get() = allStoreBranches
 
@@ -1717,6 +1731,11 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         bayarTunai: Double,
         bayarNonTunai: Double,
         refPembayaran: String = "",
+        piutangCustomerName: String = "",
+        piutangCustomerPhone: String = "",
+        piutangCustomerAddress: String = "",
+        piutangDueDate: String = "",
+        piutangNotes: String = "",
         onComplete: (Boolean, String, TransactionEntity?) -> Unit
     ) {
         val validation = validateTransactionForCheckout()
@@ -1819,7 +1838,12 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 items = txItems,
                 voucherDiberikan = voucherDiberikan,
                 voucherDiberikanNominal = voucherDiberikanNominal,
-                voucherDiberikanExpiry = voucherDiberikanExpiry
+                voucherDiberikanExpiry = voucherDiberikanExpiry,
+                piutangCustomerName = piutangCustomerName,
+                piutangCustomerPhone = piutangCustomerPhone,
+                piutangCustomerAddress = piutangCustomerAddress,
+                piutangDueDate = piutangDueDate,
+                piutangNotes = piutangNotes
             )
 
             if (success) {
@@ -1877,6 +1901,130 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    fun processCheckoutPiutang(
+        customerName: String,
+        customerPhone: String = "",
+        customerAddress: String = "",
+        dueDate: String = "",
+        notes: String = "",
+        dpAmount: Double = 0.0,
+        onComplete: (Boolean, String, TransactionEntity?) -> Unit
+    ) {
+        val ref = "PIUTANG: $customerName${if (dueDate.isNotBlank()) " (Jatuh Tempo: $dueDate)" else ""}".trim()
+        processCheckout(
+            caraBayar = "PIUTANG",
+            bayarTunai = dpAmount,
+            bayarNonTunai = 0.0,
+            refPembayaran = ref,
+            piutangCustomerName = customerName,
+            piutangCustomerPhone = customerPhone,
+            piutangCustomerAddress = customerAddress,
+            piutangDueDate = dueDate,
+            piutangNotes = notes,
+            onComplete = onComplete
+        )
+    }
+
+    fun recordReceivablePayment(
+        receivableId: Long,
+        amount: Double,
+        method: String = "TUNAI",
+        notes: String = "",
+        onComplete: (Boolean, String) -> Unit
+    ) {
+        if (amount <= 0.0) {
+            onComplete(false, "Nominal pembayaran harus lebih besar dari Rp 0")
+            return
+        }
+        viewModelScope.launch {
+            val cashierName = _currentCashier.value?.nama ?: "Kasir / Admin"
+            val success = repository.payReceivable(
+                receivableId = receivableId,
+                amount = amount,
+                method = method,
+                notes = notes,
+                kasirNama = cashierName
+            )
+            if (success) {
+                onComplete(true, "Pembayaran piutang berhasil dicatat!")
+            } else {
+                onComplete(false, "Gagal mencatat pembayaran piutang")
+            }
+        }
+    }
+
+    fun addManualReceivable(
+        customerName: String,
+        customerPhone: String = "",
+        customerAddress: String = "",
+        memberNo: String = "",
+        totalAmount: Double,
+        dpAmount: Double = 0.0,
+        dueDate: String = "",
+        notes: String = "",
+        onComplete: (Boolean, String) -> Unit
+    ) {
+        if (customerName.isBlank()) {
+            onComplete(false, "Nama pelanggan / debitur wajib diisi")
+            return
+        }
+        if (totalAmount <= 0.0) {
+            onComplete(false, "Total piutang harus lebih besar dari Rp 0")
+            return
+        }
+        viewModelScope.launch {
+            val cashier = _currentCashier.value ?: CashierUserEntity("001", "Administrator", "1111")
+            val sisa = (totalAmount - dpAmount).coerceAtLeast(0.0)
+            val status = if (sisa <= 0.0) "LUNAS" else if (dpAmount > 0.0) "SEBAGIAN" else "BELUM_LUNAS"
+            val todayStr = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
+            val bonNo = "PIUTANG-M-" + System.currentTimeMillis().toString().takeLast(6)
+
+            val rec = ReceivableEntity(
+                bonNo = bonNo,
+                customerName = customerName.trim(),
+                customerPhone = customerPhone.trim(),
+                customerAddress = customerAddress.trim(),
+                memberNo = memberNo.trim(),
+                totalAmount = totalAmount,
+                paidAmount = dpAmount,
+                remainingAmount = sisa,
+                status = status,
+                tanggal = todayStr,
+                dueDate = dueDate.ifBlank { todayStr },
+                notes = notes.trim(),
+                kasirNik = cashier.nik,
+                kasirNama = cashier.nama
+            )
+            val recId = repository.addReceivable(rec)
+            if (recId > 0 && dpAmount > 0.0) {
+                repository.payReceivable(
+                    receivableId = recId,
+                    amount = dpAmount,
+                    method = "TUNAI",
+                    notes = "Uang Muka (DP) Awal",
+                    kasirNama = cashier.nama
+                )
+            }
+            onComplete(true, "Data piutang berhasil ditambahkan!")
+        }
+    }
+
+    fun deleteReceivable(id: Long, onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            try {
+                repository.deleteReceivable(id)
+                onComplete(true)
+            } catch (_: Exception) {
+                onComplete(false)
+            }
+        }
+    }
+
+    suspend fun getPaymentsForReceivable(receivableId: Long): List<ReceivablePaymentEntity> {
+        return repository.getPaymentsForReceivable(receivableId)
+    }
+
 
     // Multi-Device Synchronization Controls
     fun updateSyncConfig(newConfig: com.example.data.sync.SyncConfig) {
@@ -2630,6 +2778,10 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         tokoTujuan: String,
         petugasNama: String,
         keterangan: String,
+        statusBayar: String = "LUNAS",
+        uangMuka: Double = 0.0,
+        sisaHutang: Double = 0.0,
+        jatuhTempo: String = "",
         items: List<Pair<ProductEntity, Pair<Int, Double>>>,
         itemUnits: Map<String, Pair<String, Int>> = emptyMap(),
         costMethod: String = "AVERAGE",
@@ -2653,20 +2805,46 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             }
             val totalNominal = purchaseItems.sumOf { it.subtotal }
             val totalItem = purchaseItems.sumOf { it.qty }
+            val computedSisa = if (statusBayar == "LUNAS") 0.0 else maxOf(0.0, totalNominal - uangMuka)
+            val finalStatus = if (statusBayar == "LUNAS" || computedSisa <= 0.0) "LUNAS" else if (uangMuka > 0) "SEBAGIAN" else "TEMPO"
             val purchase = PurchaseEntity(
                 noFakturBeli = faktur,
                 supplierNama = supplier,
                 tanggal = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault()).format(Date()),
                 totalBeli = totalNominal,
+                statusBayar = finalStatus,
                 keterangan = keterangan,
                 totalItem = totalItem,
                 totalNominal = totalNominal,
                 kasirNik = _currentCashier.value?.nik ?: "ADMIN",
                 petugasNama = petugasNama.ifBlank { _currentCashier.value?.nama ?: "Administrator" },
-                tokoTujuan = tokoTujuan.ifBlank { "Toko Utama" }
+                tokoTujuan = tokoTujuan.ifBlank { "Toko Utama" },
+                uangMuka = if (finalStatus == "LUNAS") totalNominal else uangMuka,
+                sisaHutang = computedSisa,
+                jatuhTempo = jatuhTempo
             )
             repository.recordPurchase(purchase, purchaseItems, updateCostMethod = costMethod)
             onDone(purchase)
+        }
+    }
+
+    fun payPurchaseDebt(
+        noFakturBeli: String,
+        amount: Double,
+        method: String = "TUNAI",
+        notes: String = "",
+        petugasNama: String = "",
+        onDone: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            repository.recordPurchasePayment(
+                noFakturBeli = noFakturBeli,
+                amount = amount,
+                method = method,
+                notes = notes,
+                petugasNama = petugasNama.ifBlank { _currentCashier.value?.nama ?: "Administrator" }
+            )
+            onDone()
         }
     }
 

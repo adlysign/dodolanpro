@@ -198,6 +198,10 @@ class MainActivity : ComponentActivity() {
                             viewModel = viewModel,
                             onNavigateBack = { viewModel.navigateTo(PosNavDestination.SIS_DASHBOARD) }
                         )
+                        PosNavDestination.PIUTANG -> ReceivablesScreen(
+                            viewModel = viewModel,
+                            onNavigateBack = { viewModel.navigateTo(PosNavDestination.SIS_DASHBOARD) }
+                        )
                     }
                 }
             }

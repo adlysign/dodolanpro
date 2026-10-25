@@ -304,18 +304,31 @@ object ReceiptFormatter {
 
         // Payment Info
         if (cfg.receiptShowPaymentDetail) {
-            appendLine(justify("Cara Bayar", tx.caraBayar, w))
-            if (tx.caraBayar == "CAMPURAN") {
-                appendLine(justify("  - Tunai", "Rp ${formatRupiah(tx.bayarTunai)}", w))
-                appendLine(justify("  - Non-Tunai", "Rp ${formatRupiah(tx.bayarNonTunai)}", w))
-            } else if (tx.caraBayar == "TUNAI") {
-                appendLine(justify("Bayar Tunai", "Rp ${formatRupiah(tx.bayarTunai)}", w))
-            } else {
-                if (tx.refPembayaran.isNotBlank()) {
-                    appendLine(justify("Ref ID", tx.refPembayaran, w))
+            if (tx.caraBayar == "PIUTANG") {
+                appendLine(justify("Cara Bayar", "PIUTANG / KASBON", w))
+                if (tx.bayarTunai > 0.0) {
+                    appendLine(justify("  - Uang Muka (DP)", "Rp ${formatRupiah(tx.bayarTunai)}", w))
                 }
+                val sisaPiutang = (tx.grandTotal - tx.bayarTunai).coerceAtLeast(0.0)
+                appendLine(justify("  - Sisa Piutang", "Rp ${formatRupiah(sisaPiutang)}", w))
+                appendLine(justify("Status Tagihan", if (sisaPiutang <= 0.0) "LUNAS" else "BELUM LUNAS", w))
+                if (tx.refPembayaran.isNotBlank()) {
+                    appendLine(justify("Info Debitur", tx.refPembayaran.take(w - 14), w))
+                }
+            } else {
+                appendLine(justify("Cara Bayar", tx.caraBayar, w))
+                if (tx.caraBayar == "CAMPURAN") {
+                    appendLine(justify("  - Tunai", "Rp ${formatRupiah(tx.bayarTunai)}", w))
+                    appendLine(justify("  - Non-Tunai", "Rp ${formatRupiah(tx.bayarNonTunai)}", w))
+                } else if (tx.caraBayar == "TUNAI") {
+                    appendLine(justify("Bayar Tunai", "Rp ${formatRupiah(tx.bayarTunai)}", w))
+                } else {
+                    if (tx.refPembayaran.isNotBlank()) {
+                        appendLine(justify("Ref ID", tx.refPembayaran, w))
+                    }
+                }
+                appendLine(justify("Kembalian", "Rp ${formatRupiah(tx.kembalian)}", w))
             }
-            appendLine(justify("Kembalian", "Rp ${formatRupiah(tx.kembalian)}", w))
         }
 
         if (cfg.receiptShowPpn && cfg.isTaxActive && cfg.ppnPercentage > 0.0) {
@@ -438,9 +451,15 @@ object ReceiptFormatter {
 
         appendLine(sep)
         appendLine(justify("TOTAL", "Rp ${formatRupiah(tx.grandTotal)}", w))
-        appendLine(justify("Bayar (${tx.caraBayar})", "Rp ${formatRupiah(tx.bayarTunai + tx.bayarNonTunai)}", w))
-        if (tx.kembalian > 0) {
-            appendLine(justify("Kembali", "Rp ${formatRupiah(tx.kembalian)}", w))
+        if (tx.caraBayar == "PIUTANG") {
+            val sisa = (tx.grandTotal - tx.bayarTunai).coerceAtLeast(0.0)
+            appendLine(justify("Bayar (PIUTANG)", "DP: Rp ${formatRupiah(tx.bayarTunai)}", w))
+            appendLine(justify("Sisa Piutang", "Rp ${formatRupiah(sisa)}", w))
+        } else {
+            appendLine(justify("Bayar (${tx.caraBayar})", "Rp ${formatRupiah(tx.bayarTunai + tx.bayarNonTunai)}", w))
+            if (tx.kembalian > 0) {
+                appendLine(justify("Kembali", "Rp ${formatRupiah(tx.kembalian)}", w))
+            }
         }
 
         if (tx.diskonTotal > 0) {

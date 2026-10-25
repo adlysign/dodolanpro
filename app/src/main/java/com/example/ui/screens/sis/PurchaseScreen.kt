@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.ProductEntity
 import com.example.data.local.entity.PurchaseEntity
+import com.example.data.local.entity.PurchasePaymentEntity
 import com.example.data.local.entity.StoreBranchEntity
 import com.example.data.local.entity.SupplierEntity
 import com.example.ui.screens.pos.CameraBarcodeScannerDialog
@@ -38,6 +39,10 @@ import com.example.ui.screens.pos.formatRupiah
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.PosViewModel
 import com.example.util.DocExportManager
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 data class PurchaseCartItem(
     val product: ProductEntity,
@@ -65,6 +70,7 @@ fun PurchaseScreen(
     val context = LocalContext.current
     val allProducts by viewModel.allProducts.collectAsState()
     val allPurchases by viewModel.allPurchases.collectAsState()
+    val allPurchasePayments by viewModel.allPurchasePayments.collectAsState()
     val allSuppliers by viewModel.allSuppliers.collectAsState()
     val allStoreBranches by viewModel.allStoreBranches.collectAsState()
     val currentCashier by viewModel.currentCashier.collectAsState()
@@ -79,6 +85,28 @@ fun PurchaseScreen(
     var fakturInput by remember { mutableStateOf("FB-" + (100000..999999).random()) }
     var petugasNamaInput by remember { mutableStateOf("") }
     var keteranganInput by remember { mutableStateOf("") }
+
+    // Status Pembayaran Kulakan: LUNAS vs TEMPO / PIUTANG
+    var caraBayarPembelian by remember { mutableStateOf("LUNAS") } // "LUNAS", "TEMPO"
+    var uangMukaInput by remember { mutableStateOf("") }
+    var jatuhTempoDays by remember { mutableStateOf(30) }
+    var jatuhTempoInput by remember { mutableStateOf("") }
+
+    // Dialog & Filter Riwayat Hutang Pembelian
+    var purchaseForPaymentDialog by remember { mutableStateOf<PurchaseEntity?>(null) }
+    var riwayatFilterTab by remember { mutableStateOf("SEMUA") } // "SEMUA", "LUNAS", "TEMPO"
+
+    fun calculateDueDateString(days: Int): String {
+        val cal = Calendar.getInstance()
+        cal.add(Calendar.DAY_OF_YEAR, days)
+        return SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(cal.time)
+    }
+
+    LaunchedEffect(caraBayarPembelian) {
+        if (caraBayarPembelian == "TEMPO" && jatuhTempoInput.isBlank()) {
+            jatuhTempoInput = calculateDueDateString(jatuhTempoDays)
+        }
+    }
 
     // Inisialisasi default
     LaunchedEffect(allSuppliers) {
@@ -897,8 +925,233 @@ fun PurchaseScreen(
                         }
                     }
 
+                    // CARD 4.5: CARA BAYAR PEMBELIAN (LUNAS VS TEMPO / PIUTANG HUTANG SUPPLIER)
+                    item {
+                        val parsedDp = uangMukaInput.toDoubleOrNull() ?: 0.0
+                        val currentSisaHutang = if (caraBayarPembelian == "LUNAS") 0.0 else maxOf(0.0, totalNominal - parsedDp)
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = if (caraBayarPembelian == "TEMPO") Color(0xFFFFF7ED) else Color.White),
+                            border = BorderStroke(1.5.dp, if (caraBayarPembelian == "TEMPO") Color(0xFFF97316) else PosCardBorder),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Default.AccountBalanceWallet,
+                                            contentDescription = null,
+                                            tint = if (caraBayarPembelian == "TEMPO") Color(0xFFEA580C) else RetailNavy,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            "CARA BAYAR & STATUS TRANSAKSI:",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = RetailNavy
+                                        )
+                                    }
+                                    Surface(
+                                        color = if (caraBayarPembelian == "TEMPO") Color(0xFFFFEDD5) else Color(0xFFDCFCE7),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            if (caraBayarPembelian == "TEMPO") "TEMPO / PIUTANG" else "LUNAS (TUNAI)",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = if (caraBayarPembelian == "TEMPO") Color(0xFFC2410C) else Color(0xFF15803D),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Pilihan Radio Lunas vs Tempo
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable { caraBayarPembelian = "LUNAS" },
+                                        color = if (caraBayarPembelian == "LUNAS") Color(0xFFE0F2FE) else Color(0xFFF8FAFC),
+                                        border = BorderStroke(
+                                            if (caraBayarPembelian == "LUNAS") 1.5.dp else 1.dp,
+                                            if (caraBayarPembelian == "LUNAS") RetailNavy else Color(0xFFCBD5E1)
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = caraBayarPembelian == "LUNAS",
+                                                onClick = { caraBayarPembelian = "LUNAS" }
+                                            )
+                                            Column {
+                                                Text("LUNAS", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = RetailNavy)
+                                                Text("Bayar tunai / transfer langsung", fontSize = 10.sp, color = GrayText)
+                                            }
+                                        }
+                                    }
+
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable {
+                                                caraBayarPembelian = "TEMPO"
+                                                if (jatuhTempoInput.isBlank()) {
+                                                    jatuhTempoInput = calculateDueDateString(jatuhTempoDays)
+                                                }
+                                            },
+                                        color = if (caraBayarPembelian == "TEMPO") Color(0xFFFFEDD5) else Color(0xFFF8FAFC),
+                                        border = BorderStroke(
+                                            if (caraBayarPembelian == "TEMPO") 1.5.dp else 1.dp,
+                                            if (caraBayarPembelian == "TEMPO") Color(0xFFEA580C) else Color(0xFFCBD5E1)
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = caraBayarPembelian == "TEMPO",
+                                                onClick = {
+                                                    caraBayarPembelian = "TEMPO"
+                                                    if (jatuhTempoInput.isBlank()) {
+                                                        jatuhTempoInput = calculateDueDateString(jatuhTempoDays)
+                                                    }
+                                                }
+                                            )
+                                            Column {
+                                                Text("TEMPO / PIUTANG", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFFC2410C))
+                                                Text("Bayar nanti / kredit supplier", fontSize = 10.sp, color = GrayText)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (caraBayarPembelian == "TEMPO") {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    HorizontalDivider(color = Color(0xFFFED7AA))
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Input Uang Muka (DP)
+                                    Text("Uang Muka / DP Dibayar Sekarang (Rp):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RetailNavy)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    OutlinedTextField(
+                                        value = uangMukaInput,
+                                        onValueChange = { uangMukaInput = it.filter { ch -> ch.isDigit() } },
+                                        placeholder = { Text("0 (Tanpa DP / Bayar Penuh Nanti)") },
+                                        leadingIcon = { Text("Rp", fontWeight = FontWeight.Bold, color = RetailNavy, modifier = Modifier.padding(start = 12.dp)) },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        colors = retailTextFieldColors()
+                                    )
+
+                                    // Tombol Shortcut DP
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        AssistChip(
+                                            onClick = { uangMukaInput = "0" },
+                                            label = { Text("Tanpa DP (0)", fontSize = 10.sp) }
+                                        )
+                                        if (totalNominal > 0) {
+                                            val dp20 = (totalNominal * 0.2).toLong()
+                                            val dp50 = (totalNominal * 0.5).toLong()
+                                            AssistChip(
+                                                onClick = { uangMukaInput = dp20.toString() },
+                                                label = { Text("DP 20% (${formatRupiah(dp20.toDouble())})", fontSize = 10.sp) }
+                                            )
+                                            AssistChip(
+                                                onClick = { uangMukaInput = dp50.toString() },
+                                                label = { Text("DP 50% (${formatRupiah(dp50.toDouble())})", fontSize = 10.sp) }
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Tanggal Jatuh Tempo
+                                    Text("Tanggal Jatuh Tempo Pelunasan:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RetailNavy)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    OutlinedTextField(
+                                        value = jatuhTempoInput,
+                                        onValueChange = { jatuhTempoInput = it },
+                                        placeholder = { Text("dd/MM/yyyy (misal: 25/11/2026)") },
+                                        leadingIcon = { Icon(Icons.Default.Event, contentDescription = null, tint = RetailNavy) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        colors = retailTextFieldColors()
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        listOf(7 to "+7 Hari", 14 to "+14 Hari", 30 to "+30 Hari", 60 to "+60 Hari").forEach { (days, label) ->
+                                            FilterChip(
+                                                selected = jatuhTempoDays == days,
+                                                onClick = {
+                                                    jatuhTempoDays = days
+                                                    jatuhTempoInput = calculateDueDateString(days)
+                                                },
+                                                label = { Text(label, fontSize = 10.sp) }
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Kartu Informasi Sisa Hutang
+                                    Surface(
+                                        color = Color(0xFFFEF2F2),
+                                        border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                                        shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("Sisa Hutang ke Supplier:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF991B1B))
+                                                Text(
+                                                    formatRupiah(currentSisaHutang),
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = RetailRedPrimary
+                                                )
+                                            }
+                                            Text(
+                                                "Jatuh Tempo: $jatuhTempoInput • Cicilan / pelunasan dapat dicatat kapan saja di Tab Riwayat.",
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF7F1D1D),
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // CARD 5: RINGKASAN & TOMBOL SIMPAN BESAR
                     item {
+                        val parsedDp = if (caraBayarPembelian == "LUNAS") totalNominal else (uangMukaInput.toDoubleOrNull() ?: 0.0)
+                        val computedSisa = if (caraBayarPembelian == "LUNAS") 0.0 else maxOf(0.0, totalNominal - parsedDp)
+
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -922,6 +1175,17 @@ fun PurchaseScreen(
                                         val totalBasePcs = purchaseCart.sumOf { it.totalBaseQty }
                                         val totalLabel = if (totalBasePcs != totalQty) "Total: $totalQty Unit ($totalBasePcs Pcs Dasar)" else "Total: $totalQty Pcs"
                                         Text("$totalLabel • ${purchaseCart.size} Macam Produk", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RetailNavy)
+
+                                        if (caraBayarPembelian == "TEMPO") {
+                                            Text(
+                                                "Status: TEMPO (DP: ${formatRupiah(parsedDp)} | Sisa Hutang: ${formatRupiah(computedSisa)})",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFFC2410C)
+                                            )
+                                        } else {
+                                            Text("Status: LUNAS (Tunai/Bank)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RetailGreen)
+                                        }
                                     }
                                     Column(horizontalAlignment = Alignment.End) {
                                         Text("TOTAL PEMBELIAN", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = GrayText)
@@ -960,19 +1224,29 @@ fun PurchaseScreen(
                                                 viewModel.updateProductUnit(item.product.plu, item.satuan)
                                             }
                                         }
+
+                                        val finalDp = if (caraBayarPembelian == "LUNAS") totalNominal else (uangMukaInput.toDoubleOrNull() ?: 0.0)
+                                        val finalSisa = if (caraBayarPembelian == "LUNAS") 0.0 else maxOf(0.0, totalNominal - finalDp)
+
                                         viewModel.recordDirectPurchase(
                                             faktur = fakturInput,
                                             supplier = sumberNama,
                                             tokoTujuan = sumberLabel,
                                             petugasNama = petugasNamaInput.ifBlank { "Administrator" },
                                             keterangan = keteranganInput.ifBlank { "Belanja $sumberLabel" },
+                                            statusBayar = caraBayarPembelian,
+                                            uangMuka = finalDp,
+                                            sisaHutang = finalSisa,
+                                            jatuhTempo = if (caraBayarPembelian == "TEMPO") jatuhTempoInput else "",
                                             items = itemsToSave,
                                             itemUnits = itemUnitsMap,
                                             costMethod = costMethod
                                         ) {
-                                            feedbackMessage = "Pembelian $fakturInput dari $sumberNama berhasil disimpan oleh $petugasNamaInput! Stok dan HPP telah diperbarui."
+                                            val tempoTag = if (caraBayarPembelian == "TEMPO") " [TEMPO - Sisa Hutang: ${formatRupiah(finalSisa)}]" else " [LUNAS]"
+                                            feedbackMessage = "Pembelian $fakturInput dari $sumberNama berhasil disimpan$tempoTag! Stok dan HPP telah diperbarui."
                                             purchaseCart.clear()
                                             fakturInput = "FB-" + (100000..999999).random()
+                                            uangMukaInput = ""
                                         }
                                     },
                                     enabled = purchaseCart.isNotEmpty(),
@@ -990,8 +1264,84 @@ fun PurchaseScreen(
                     }
                 }
             } else {
-                // TAB 1: RIWAYAT PEMBELIAN DENGAN MENAMPILKAN SUMBER & PETUGAS
+                // TAB 1: RIWAYAT PEMBELIAN & MANAJEMEN HUTANG TEMPO
                 Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+                    // KPI STATS CARDS
+                    val totalSemuaBeli = allPurchases.sumOf { it.totalNominal }
+                    val totalSisaHutang = allPurchases.sumOf { it.sisaHutang }
+                    val countTempoActive = allPurchases.count { it.statusBayar != "LUNAS" && it.sisaHutang > 0 }
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, PosCardBorder),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text("Total Kulakan", fontSize = 10.sp, color = GrayText, fontWeight = FontWeight.Bold)
+                                Text(formatRupiah(totalSemuaBeli), fontSize = 12.sp, fontWeight = FontWeight.Black, color = RetailNavy)
+                            }
+                        }
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = if (totalSisaHutang > 0) Color(0xFFFEF2F2) else Color.White),
+                            border = BorderStroke(1.dp, if (totalSisaHutang > 0) Color(0xFFFECACA) else PosCardBorder),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text("Hutang Supplier", fontSize = 10.sp, color = if (totalSisaHutang > 0) Color(0xFF991B1B) else GrayText, fontWeight = FontWeight.Bold)
+                                Text(
+                                    formatRupiah(totalSisaHutang),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (totalSisaHutang > 0) RetailRedPrimary else RetailNavy
+                                )
+                            }
+                        }
+                        Card(
+                            modifier = Modifier.weight(0.9f),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, PosCardBorder),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text("Tempo Aktif", fontSize = 10.sp, color = GrayText, fontWeight = FontWeight.Bold)
+                                Text("$countTempoActive Nota", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color(0xFFC2410C))
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Filter Chips (Semua, Lunas, Tempo/Hutang)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilterChip(
+                            selected = riwayatFilterTab == "SEMUA",
+                            onClick = { riwayatFilterTab = "SEMUA" },
+                            label = { Text("Semua (${allPurchases.size})", fontSize = 11.sp) }
+                        )
+                        FilterChip(
+                            selected = riwayatFilterTab == "LUNAS",
+                            onClick = { riwayatFilterTab = "LUNAS" },
+                            label = { Text("Lunas (${allPurchases.count { it.statusBayar == "LUNAS" }})", fontSize = 11.sp) }
+                        )
+                        FilterChip(
+                            selected = riwayatFilterTab == "TEMPO",
+                            onClick = { riwayatFilterTab = "TEMPO" },
+                            label = { Text("Tempo / Hutang (${allPurchases.count { it.statusBayar != "LUNAS" }})", fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Color(0xFFFFEDD5),
+                                selectedLabelColor = Color(0xFFC2410C)
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     OutlinedTextField(
                         value = riwayatSearchQuery,
                         onValueChange = { riwayatSearchQuery = it },
@@ -1005,29 +1355,39 @@ fun PurchaseScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     val filteredPurchases = allPurchases.filter { p ->
-                        riwayatSearchQuery.isBlank() ||
-                        p.noFakturBeli.contains(riwayatSearchQuery, ignoreCase = true) ||
-                        p.supplierNama.contains(riwayatSearchQuery, ignoreCase = true) ||
-                        p.tokoTujuan.contains(riwayatSearchQuery, ignoreCase = true) ||
-                        p.petugasNama.contains(riwayatSearchQuery, ignoreCase = true) ||
-                        p.kasirNik.contains(riwayatSearchQuery, ignoreCase = true)
+                        val matchSearch = riwayatSearchQuery.isBlank() ||
+                            p.noFakturBeli.contains(riwayatSearchQuery, ignoreCase = true) ||
+                            p.supplierNama.contains(riwayatSearchQuery, ignoreCase = true) ||
+                            p.tokoTujuan.contains(riwayatSearchQuery, ignoreCase = true) ||
+                            p.petugasNama.contains(riwayatSearchQuery, ignoreCase = true) ||
+                            p.kasirNik.contains(riwayatSearchQuery, ignoreCase = true)
+
+                        val matchTab = when (riwayatFilterTab) {
+                            "LUNAS" -> p.statusBayar == "LUNAS"
+                            "TEMPO" -> p.statusBayar != "LUNAS"
+                            else -> true
+                        }
+                        matchSearch && matchTab
                     }
 
                     if (filteredPurchases.isEmpty()) {
                         Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            Text("Belum ada riwayat nota pembelian.", color = GrayText)
+                            Text("Tidak ada nota pembelian yang cocok.", color = GrayText)
                         }
                     } else {
                         LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(filteredPurchases) { p ->
                                 val isGrosir = p.tokoTujuan.contains("Grosir", ignoreCase = true)
+                                val isLunas = p.statusBayar == "LUNAS" || p.sisaHutang <= 0.0
+
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = CardDefaults.cardColors(containerColor = Color.White),
-                                    border = BorderStroke(1.dp, PosCardBorder),
+                                    border = BorderStroke(1.dp, if (!isLunas) Color(0xFFFDBA74) else PosCardBorder),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Column(modifier = Modifier.padding(12.dp)) {
+                                        // Header Row: Tipe Sumber, Faktur, Status Badge, dan Tanggal
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1061,22 +1421,53 @@ fun PurchaseScreen(
                                                 Text(p.noFakturBeli, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = RetailNavy)
                                             }
 
-                                            Text(p.tanggal, fontSize = 11.sp, color = GrayText)
+                                            // Status Badge
+                                            Surface(
+                                                color = when {
+                                                    isLunas -> Color(0xFFDCFCE7)
+                                                    p.statusBayar == "SEBAGIAN" -> Color(0xFFFEF3C7)
+                                                    else -> Color(0xFFFFEDD5)
+                                                },
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = when {
+                                                        isLunas -> "LUNAS"
+                                                        p.statusBayar == "SEBAGIAN" -> "TEMPO SEBAGIAN"
+                                                        else -> "TEMPO (HUTANG)"
+                                                    },
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = when {
+                                                        isLunas -> Color(0xFF15803D)
+                                                        p.statusBayar == "SEBAGIAN" -> Color(0xFFB45309)
+                                                        else -> Color(0xFFC2410C)
+                                                    },
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
                                         }
 
                                         Spacer(modifier = Modifier.height(6.dp))
 
-                                        // Sumber Nama
-                                        Text(
-                                            "Sumber: ${p.supplierNama}",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = Color.Black
-                                        )
+                                        // Sumber Nama & Tanggal
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                "Sumber: ${p.supplierNama}",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                color = Color.Black
+                                            )
+                                            Text(p.tanggal, fontSize = 11.sp, color = GrayText)
+                                        }
 
                                         Spacer(modifier = Modifier.height(4.dp))
 
-                                        // Petugas Penginput (Sesuai Permintaan User)
+                                        // Petugas Penginput
                                         Surface(
                                             color = Color(0xFFF1F5F9),
                                             shape = RoundedCornerShape(4.dp),
@@ -1097,8 +1488,52 @@ fun PurchaseScreen(
                                             }
                                         }
 
-                                        Spacer(modifier = Modifier.height(6.dp))
+                                        // JIKA TEMPO / HUTANG: TAMPILKAN RINCIAN HUTANG & JATUH TEMPO
+                                        if (!isLunas) {
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Surface(
+                                                color = Color(0xFFFFF7ED),
+                                                border = BorderStroke(1.dp, Color(0xFFFED7AA)),
+                                                shape = RoundedCornerShape(6.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(8.dp)) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text("Uang Muka (DP): ${formatRupiah(p.uangMuka)}", fontSize = 11.sp, color = GrayText)
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Text("Sisa Hutang: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF991B1B))
+                                                            Text(
+                                                                formatRupiah(p.sisaHutang),
+                                                                fontSize = 12.sp,
+                                                                fontWeight = FontWeight.Black,
+                                                                color = RetailRedPrimary
+                                                            )
+                                                        }
+                                                    }
+                                                    if (p.jatuhTempo.isNotBlank()) {
+                                                        Spacer(modifier = Modifier.height(2.dp))
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Icon(Icons.Default.Schedule, contentDescription = null, tint = Color(0xFFC2410C), modifier = Modifier.size(12.dp))
+                                                            Spacer(modifier = Modifier.width(4.dp))
+                                                            Text(
+                                                                "Jatuh Tempo: ${p.jatuhTempo}",
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.SemiBold,
+                                                                color = Color(0xFFC2410C)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
 
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        // Bottom Row: Total & Action Buttons
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1107,19 +1542,34 @@ fun PurchaseScreen(
                                             Text(
                                                 "Total: ${p.totalItem} pcs • ${formatRupiah(p.totalNominal)}",
                                                 fontWeight = FontWeight.Black,
-                                                color = RetailGreen,
+                                                color = RetailNavy,
                                                 fontSize = 13.sp
                                             )
 
-                                            Button(
-                                                onClick = { selectedPurchaseForDoc = p },
-                                                colors = ButtonDefaults.buttonColors(containerColor = RetailNavy),
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                                modifier = Modifier.height(30.dp)
-                                            ) {
-                                                Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(13.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("Cetak / Simpan", fontSize = 11.sp)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                if (!isLunas && p.sisaHutang > 0) {
+                                                    Button(
+                                                        onClick = { purchaseForPaymentDialog = p },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = RetailGreen),
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                        modifier = Modifier.height(30.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.Payment, contentDescription = null, modifier = Modifier.size(13.dp))
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text("Bayar Hutang", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+
+                                                Button(
+                                                    onClick = { selectedPurchaseForDoc = p },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = RetailNavy),
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                    modifier = Modifier.height(30.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(13.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("Cetak / Nota", fontSize = 11.sp)
+                                                }
                                             }
                                         }
                                     }
@@ -1233,6 +1683,14 @@ fun PurchaseScreen(
             appendLine("Petugas  : ${pur.petugasNama} (NIK: ${pur.kasirNik})")
             appendLine("Total Pcs: ${pur.totalItem}")
             appendLine("Total Rp : ${formatRupiah(pur.totalNominal)}")
+            appendLine("Status   : ${if (pur.statusBayar == "LUNAS") "LUNAS (TUNAI/BANK)" else "TEMPO / PIUTANG HUTANG"}")
+            if (pur.statusBayar != "LUNAS") {
+                appendLine("Uang Muka: ${formatRupiah(pur.uangMuka)}")
+                appendLine("Sisa Htg : ${formatRupiah(pur.sisaHutang)}")
+                if (pur.jatuhTempo.isNotBlank()) {
+                    appendLine("Jatuh Tmp: ${pur.jatuhTempo}")
+                }
+            }
             appendLine("Ket      : ${pur.keterangan}")
             appendLine("----------------------------------------")
             appendLine("Status: STOK DITAMBAHKAN & HPP DIPERBARUI")
@@ -1298,6 +1756,262 @@ fun PurchaseScreen(
             }
         )
     }
+
+    // Modal Bayar Hutang Pembelian Tempo
+    purchaseForPaymentDialog?.let { pur ->
+        val paymentsForPur = allPurchasePayments.filter { it.noFakturBeli == pur.noFakturBeli }
+        BayarHutangPembelianDialog(
+            purchase = pur,
+            payments = paymentsForPur,
+            currentCashierName = currentCashier?.nama ?: "Administrator",
+            onDismiss = { purchaseForPaymentDialog = null },
+            onConfirmPayment = { amount, method, notes, petugas ->
+                viewModel.payPurchaseDebt(
+                    noFakturBeli = pur.noFakturBeli,
+                    amount = amount,
+                    method = method,
+                    notes = notes,
+                    petugasNama = petugas
+                ) {
+                    feedbackMessage = "Pembayaran hutang nota ${pur.noFakturBeli} sebesar ${formatRupiah(amount)} via $method berhasil dicatat!"
+                    purchaseForPaymentDialog = null
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun BayarHutangPembelianDialog(
+    purchase: PurchaseEntity,
+    payments: List<PurchasePaymentEntity>,
+    currentCashierName: String,
+    onDismiss: () -> Unit,
+    onConfirmPayment: (amount: Double, method: String, notes: String, petugas: String) -> Unit
+) {
+    var nominalInput by remember { mutableStateOf("") }
+    var selectedMethod by remember { mutableStateOf("TUNAI") }
+    var notesInput by remember { mutableStateOf("") }
+    var petugasInput by remember { mutableStateOf(currentCashierName) }
+    var errorMsg by remember { mutableStateOf("") }
+
+    val remainingDebt = purchase.sisaHutang
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, tint = RetailNavy)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("PELUNASAN HUTANG SUPPLIER", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+        },
+        text = {
+            LazyColumn(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    // Ringkasan Nota Pembelian
+                    Surface(
+                        color = Color(0xFFFFF7ED),
+                        border = BorderStroke(1.dp, Color(0xFFFED7AA)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("No. Faktur:", fontSize = 11.sp, color = GrayText)
+                                Text(purchase.noFakturBeli, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = RetailNavy)
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Supplier / Toko:", fontSize = 11.sp, color = GrayText)
+                                Text(purchase.supplierNama, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Total Faktur:", fontSize = 11.sp, color = GrayText)
+                                Text(formatRupiah(purchase.totalNominal), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color(0xFFFED7AA))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("SISA HUTANG SAAT INI:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF991B1B))
+                                Text(
+                                    formatRupiah(remainingDebt),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = RetailRedPrimary
+                                )
+                            }
+                            if (purchase.jatuhTempo.isNotBlank()) {
+                                Text(
+                                    "Jatuh Tempo: ${purchase.jatuhTempo}",
+                                    fontSize = 10.sp,
+                                    color = Color(0xFFC2410C),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Text("Jumlah yang Dibayarkan (Rp) *:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RetailNavy)
+                    OutlinedTextField(
+                        value = nominalInput,
+                        onValueChange = {
+                            nominalInput = it.filter { ch -> ch.isDigit() }
+                            errorMsg = ""
+                        },
+                        placeholder = { Text("Masukkan nominal bayar") },
+                        leadingIcon = { Text("Rp", fontWeight = FontWeight.Bold, color = RetailNavy, modifier = Modifier.padding(start = 12.dp)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = retailTextFieldColors()
+                    )
+
+                    // Quick payment chips
+                    Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        AssistChip(
+                            onClick = { nominalInput = remainingDebt.toLong().toString() },
+                            label = { Text("Lunasi Penuh", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        if (remainingDebt >= 20000) {
+                            val half = (remainingDebt / 2).toLong()
+                            AssistChip(
+                                onClick = { nominalInput = half.toString() },
+                                label = { Text("50% (${formatRupiah(half.toDouble())})", fontSize = 10.sp) }
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    Text("Metode Pembayaran:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RetailNavy)
+                    val methods = listOf("TUNAI", "TRANSFER BCA", "TRANSFER MANDIRI", "TRANSFER BRI", "GIRO / CEK")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        methods.take(3).forEach { m ->
+                            FilterChip(
+                                selected = selectedMethod == m,
+                                onClick = { selectedMethod = m },
+                                label = { Text(m, fontSize = 9.sp) }
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        methods.drop(3).forEach { m ->
+                            FilterChip(
+                                selected = selectedMethod == m,
+                                onClick = { selectedMethod = m },
+                                label = { Text(m, fontSize = 9.sp) }
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    Text("Catatan / No. Referensi Transfer:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RetailNavy)
+                    OutlinedTextField(
+                        value = notesInput,
+                        onValueChange = { notesInput = it },
+                        placeholder = { Text("Contoh: Transfer via m-BCA a.n PT Supplier") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = retailTextFieldColors()
+                    )
+                }
+
+                item {
+                    Text("Petugas / Admin Pembayar:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RetailNavy)
+                    OutlinedTextField(
+                        value = petugasInput,
+                        onValueChange = { petugasInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = retailTextFieldColors()
+                    )
+                }
+
+                // RIWAYAT PEMBAYARAN SEBELUMNYA JIKA ADA
+                if (payments.isNotEmpty()) {
+                    item {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Riwayat Pembayaran Faktur Ini (${payments.size}):",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = RetailNavy
+                        )
+                    }
+
+                    items(payments) { pay ->
+                        Surface(
+                            color = Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(pay.tanggal, fontSize = 10.sp, color = GrayText)
+                                    Text("${pay.caraBayar} • ${pay.petugasNama}", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = RetailNavy)
+                                    if (pay.catatan.isNotBlank()) {
+                                        Text(pay.catatan, fontSize = 9.sp, color = GrayText)
+                                    }
+                                }
+                                Text(
+                                    formatRupiah(pay.nominal),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = RetailGreen
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (errorMsg.isNotBlank()) {
+                    item {
+                        Text(errorMsg, color = RetailRedPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val amount = nominalInput.toDoubleOrNull() ?: 0.0
+                    if (amount <= 0.0) {
+                        errorMsg = "Nominal pembayaran harus lebih dari Rp 0!"
+                        return@Button
+                    }
+                    if (amount > remainingDebt) {
+                        errorMsg = "Nominal melebihi sisa hutang (${formatRupiah(remainingDebt)})!"
+                        return@Button
+                    }
+                    onConfirmPayment(amount, selectedMethod, notesInput.trim(), petugasInput.trim().ifBlank { "Administrator" })
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = RetailGreen)
+            ) {
+                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("KONFIRMASI BAYAR", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) {
+                Text("BATAL")
+            }
+        }
+    )
 }
 
 @Composable
