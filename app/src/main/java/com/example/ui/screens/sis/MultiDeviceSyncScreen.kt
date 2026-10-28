@@ -45,6 +45,9 @@ fun MultiDeviceSyncScreen(
     var serverHostInput by remember(syncConfig) { mutableStateOf(syncConfig.serverHost) }
     var serverPortInput by remember(syncConfig) { mutableStateOf(syncConfig.serverPort.toString()) }
 
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    var isScanningLan by remember { mutableStateOf(false) }
+    var discoveredServers by remember { mutableStateOf<List<String>>(emptyList()) }
     var isTestingConnection by remember { mutableStateOf(false) }
     var isSyncingCatalog by remember { mutableStateOf(false) }
     var actionMessage by remember { mutableStateOf("") }
@@ -279,7 +282,11 @@ fun MultiDeviceSyncScreen(
                                     Column(modifier = Modifier.padding(10.dp)) {
                                         Text("ALAMAT SERVER UNTUK KASIR KLIEN:", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = RetailNavy)
                                         Spacer(modifier = Modifier.height(4.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
                                             Text(
                                                 "IP: ${syncStatus.localIpAddress}  |  Port: ${syncStatus.serverPort}",
                                                 fontWeight = FontWeight.Bold,
@@ -287,6 +294,19 @@ fun MultiDeviceSyncScreen(
                                                 color = Color.Black,
                                                 fontFamily = FontFamily.Monospace
                                             )
+                                            OutlinedButton(
+                                                onClick = {
+                                                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(syncStatus.localIpAddress))
+                                                    actionMessage = "IP Server (${syncStatus.localIpAddress}) disalin ke clipboard!"
+                                                    isSuccessAction = true
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                modifier = Modifier.height(28.dp)
+                                            ) {
+                                                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("SALIN IP", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            }
                                         }
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
@@ -351,6 +371,38 @@ fun MultiDeviceSyncScreen(
                                     singleLine = true
                                 )
 
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                // Tombol Scan LAN Otomatis
+                                OutlinedButton(
+                                    onClick = {
+                                        isScanningLan = true
+                                        actionMessage = "Sedang memindai jaringan Wi-Fi untuk menemukan Server Master..."
+                                        viewModel.scanLocalNetworkForServers { list ->
+                                            isScanningLan = false
+                                            discoveredServers = list
+                                            if (list.isNotEmpty()) {
+                                                serverHostInput = list.first()
+                                                actionMessage = "Ditemukan Server Master di ${list.first()}! IP otomatis diterapkan."
+                                                isSuccessAction = true
+                                            } else {
+                                                actionMessage = "Tidak ditemukan Server otomatis. Pastikan Server Master aktif dan kedua perangkat terhubung ke Wi-Fi / Hotspot yang sama."
+                                                isSuccessAction = false
+                                            }
+                                        }
+                                    },
+                                    enabled = !isScanningLan,
+                                    modifier = Modifier.fillMaxWidth().testTag("btn_scan_lan_server")
+                                ) {
+                                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        if (isScanningLan) "Memindai Jaringan Wi-Fi..." else "CARI SERVER OTOMATIS (SCAN LAN)",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    )
+                                }
+
                                 Spacer(modifier = Modifier.height(8.dp))
 
                                 OutlinedTextField(
@@ -368,7 +420,8 @@ fun MultiDeviceSyncScreen(
                                     Button(
                                         onClick = {
                                             isTestingConnection = true
-                                            viewModel.testSyncConnection { ok, msg ->
+                                            val port = serverPortInput.toIntOrNull() ?: 8888
+                                            viewModel.testSyncConnection(serverHostInput.trim(), port) { ok, msg ->
                                                 isTestingConnection = false
                                                 isSuccessAction = ok
                                                 actionMessage = msg
@@ -380,13 +433,14 @@ fun MultiDeviceSyncScreen(
                                     ) {
                                         Icon(Icons.Default.WifiTethering, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("UJI KONEKSI", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                        Text(if (isTestingConnection) "MENGUJI..." else "UJI KONEKSI", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                     }
 
                                     Button(
                                         onClick = {
                                             isSyncingCatalog = true
-                                            viewModel.syncCatalogFromServer { ok, msg ->
+                                            val port = serverPortInput.toIntOrNull() ?: 8888
+                                            viewModel.syncCatalogFromServer(serverHostInput.trim(), port) { ok, msg ->
                                                 isSyncingCatalog = false
                                                 isSuccessAction = ok
                                                 actionMessage = msg
@@ -398,7 +452,7 @@ fun MultiDeviceSyncScreen(
                                     ) {
                                         Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("SINKRON KATALOG", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                        Text(if (isSyncingCatalog) "SINKRON..." else "SINKRON KATALOG", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                     }
                                 }
                             }

@@ -684,5 +684,42 @@ class ExampleRobolectricTest {
     assertEquals(2000.0, cartItemNonKelipatan.promoDiscountAmount, 0.01)
     assertEquals(22000.0, cartItemNonKelipatan.subtotal, 0.01) // 6 * 4000 - 2000 = 22,000
   }
+
+  @Test
+  fun `test member point logging and queries`() = kotlinx.coroutines.runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
+    val db = com.example.data.local.AppDatabase.getDatabase(context, scope)
+    val dao = db.posDao()
+
+    val log = com.example.data.local.entity.MemberPointLogEntity(
+      memberNo = "MBR-TEST-001",
+      memberNama = "Budi Tester",
+      type = "EARN",
+      pointsDelta = 50,
+      balanceAfter = 50,
+      referenceNo = "TRX-TEST-01",
+      note = "Perolehan poin transaksi uji coba",
+      tanggal = "27/10/2026 14:00",
+      timestamp = System.currentTimeMillis()
+    )
+    dao.insertPointLog(log)
+
+    val count = dao.getPointLogsCount()
+    assert(count > 0)
+
+    var fetchedLogs: List<com.example.data.local.entity.MemberPointLogEntity>? = null
+    try {
+      dao.getPointLogsByMember("MBR-TEST-001").collect {
+        fetchedLogs = it
+        throw kotlinx.coroutines.CancellationException()
+      }
+    } catch (_: kotlinx.coroutines.CancellationException) {}
+
+    assert(fetchedLogs != null && fetchedLogs!!.isNotEmpty())
+    assertEquals("MBR-TEST-001", fetchedLogs!![0].memberNo)
+    assertEquals(50, fetchedLogs!![0].pointsDelta)
+    assertEquals("EARN", fetchedLogs!![0].type)
+  }
 }
 

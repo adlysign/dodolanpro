@@ -60,16 +60,23 @@ class PosSyncManager(
 
     fun getLocalIpAddress(): String {
         try {
-            val interfaces = NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val iface = interfaces.nextElement()
+            val interfaces = NetworkInterface.getNetworkInterfaces().toList()
+            val sortedInterfaces = interfaces.sortedByDescending { iface ->
+                when {
+                    iface.name.contains("wlan", ignoreCase = true) -> 3
+                    iface.name.contains("ap", ignoreCase = true) -> 2
+                    iface.name.contains("eth", ignoreCase = true) -> 1
+                    else -> 0
+                }
+            }
+            for (iface in sortedInterfaces) {
                 if (iface.isLoopback || !iface.isUp) continue
                 val addresses = iface.inetAddresses
                 while (addresses.hasMoreElements()) {
                     val addr = addresses.nextElement()
                     if (addr is Inet4Address && !addr.isLoopbackAddress) {
                         val host = addr.hostAddress
-                        if (host != null && (host.startsWith("192.168.") || host.startsWith("10.") || host.startsWith("172."))) {
+                        if (!host.isNullOrBlank() && host != "127.0.0.1") {
                             return host
                         }
                     }
@@ -162,7 +169,10 @@ class PosSyncManager(
     private fun startServer(port: Int) {
         serverJob = scope.launch {
             try {
-                serverSocket = ServerSocket(port)
+                serverSocket = ServerSocket().apply {
+                    reuseAddress = true
+                    bind(java.net.InetSocketAddress(port))
+                }
                 val localIp = getLocalIpAddress()
                 _syncStatus.value = _syncStatus.value.copy(
                     isServerRunning = true,
@@ -455,15 +465,19 @@ class PosSyncManager(
     suspend fun sendClientHeartbeat(
         pendingCount: Int,
         cashierNik: String,
-        cashierName: String
+        cashierName: String,
+        targetHost: String? = null,
+        targetPort: Int? = null
     ): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         val cfg = _syncConfig.value
-        val urlStr = "http://${cfg.serverHost}:${cfg.serverPort}/api/heartbeat"
+        val host = (targetHost ?: cfg.serverHost).trim()
+        val port = targetPort ?: cfg.serverPort
+        val urlStr = "http://$host:$port/api/heartbeat"
         try {
             val url = URL(urlStr)
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
-                connectTimeout = 3000
+                connectTimeout = 3500
                 readTimeout = 4000
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json; charset=utf-8")
@@ -485,52 +499,64 @@ class PosSyncManager(
             val code = conn.responseCode
             if (code == 200) {
                 val resp = conn.inputStream.bufferedReader().use { it.readText() }
+                if (host != cfg.serverHost || port != cfg.serverPort) {
+                    saveConfig(cfg.copy(serverHost = host, serverPort = port))
+                }
                 _syncStatus.value = _syncStatus.value.copy(
                     isConnectedToServer = true,
                     lastSyncTimestamp = System.currentTimeMillis(),
-                    lastSyncStatus = "Terhubung dengan Server (${cfg.serverHost}:${cfg.serverPort})",
+                    lastSyncStatus = "Terhubung dengan Server ($host:$port)",
                     isSuccess = true
                 )
-                Pair(true, "Terhubung ke Server")
+                Pair(true, "Berhasil terhubung ke Server Master ($host:$port)!")
             } else {
                 _syncStatus.value = _syncStatus.value.copy(
                     isConnectedToServer = false,
                     lastSyncStatus = "Server merespons kode: $code",
                     isSuccess = false
                 )
-                Pair(false, "Respon HTTP $code")
+                Pair(false, "Server merespons HTTP $code")
             }
         } catch (e: Exception) {
+            val err = e.localizedMessage ?: e.message ?: "Tidak dapat menjangkau server"
             _syncStatus.value = _syncStatus.value.copy(
                 isConnectedToServer = false,
-                lastSyncStatus = "Gagal terhubung ke Server (${cfg.serverHost}:${cfg.serverPort}): ${e.message}",
+                lastSyncStatus = "Gagal terhubung ke $host:$port ($err)",
                 isSuccess = false
             )
-            Pair(false, e.localizedMessage ?: "Gagal terhubung")
+            Pair(false, "Koneksi ke $host:$port gagal ($err). Pastikan kedua perangkat terhubung ke Wi-Fi / Hotspot yang sama dan Server Master sudah aktif!")
         }
     }
 
-    suspend fun syncCatalogFromServer(): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+    suspend fun syncCatalogFromServer(
+        targetHost: String? = null,
+        targetPort: Int? = null
+    ): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         val cfg = _syncConfig.value
-        val urlStr = "http://${cfg.serverHost}:${cfg.serverPort}/api/catalog"
+        val host = (targetHost ?: cfg.serverHost).trim()
+        val port = targetPort ?: cfg.serverPort
+        val urlStr = "http://$host:$port/api/catalog"
         try {
             val url = URL(urlStr)
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
-                connectTimeout = 5000
-                readTimeout = 10000
+                connectTimeout = 6000
+                readTimeout = 15000
             }
 
             if (conn.responseCode == 200) {
                 val json = conn.inputStream.bufferedReader().use { it.readText() }
                 val restored = repository.restoreDatabaseFromJson(json)
                 if (restored) {
+                    if (host != cfg.serverHost || port != cfg.serverPort) {
+                        saveConfig(cfg.copy(serverHost = host, serverPort = port))
+                    }
                     _syncStatus.value = _syncStatus.value.copy(
                         lastSyncTimestamp = System.currentTimeMillis(),
                         lastSyncStatus = "Katalog & data master berhasil disinkronkan dari Server!",
                         isSuccess = true
                     )
-                    Pair(true, "Sinkronisasi katalog berhasil!")
+                    Pair(true, "Sinkronisasi katalog dari Server ($host:$port) berhasil!")
                 } else {
                     Pair(false, "Gagal memproses data katalog dari server")
                 }
@@ -538,8 +564,30 @@ class PosSyncManager(
                 Pair(false, "Server merespons status: ${conn.responseCode}")
             }
         } catch (e: Exception) {
-            Pair(false, "Koneksi gagal: ${e.message}")
+            Pair(false, "Koneksi gagal: ${e.message}. Pastikan IP server $host benar.")
         }
+    }
+
+    suspend fun scanLocalSubnetForServers(port: Int = DEFAULT_PORT): List<String> = withContext(Dispatchers.IO) {
+        val localIp = getLocalIpAddress()
+        if (localIp == "127.0.0.1" || !localIp.contains(".")) return@withContext emptyList()
+        val subnet = localIp.substringBeforeLast(".") + "."
+
+        val allIps = (1..254).map { "$subnet$it" }.filter { it != localIp }
+        val jobs = allIps.map { ip ->
+            async {
+                try {
+                    val socket = Socket()
+                    socket.connect(java.net.InetSocketAddress(ip, port), 250)
+                    socket.close()
+                    ip
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
+        val results = jobs.awaitAll().filterNotNull()
+        results
     }
 
     suspend fun pushSaleToServer(

@@ -78,6 +78,24 @@ fun PosScreen(
     val pendingCarts by viewModel.pendingCarts.collectAsState()
     val appliedPoin by viewModel.appliedPoin.collectAsState()
     val allMembers by viewModel.allMembers.collectAsState()
+    val allReceivables by viewModel.allReceivables.collectAsState()
+    val syncConfig by viewModel.syncConfig.collectAsState()
+    val syncStatus by viewModel.syncStatus.collectAsState()
+
+    val memberRemainingPiutang = remember(currentMember, allReceivables) {
+        if (currentMember == null) 0.0
+        else {
+            val m = currentMember!!
+            allReceivables.filter { r ->
+                !r.status.equals("LUNAS", ignoreCase = true) && (
+                    (r.memberNo.isNotBlank() && r.memberNo == m.memberNo) ||
+                    (r.customerPhone.isNotBlank() && m.noHp.isNotBlank() && r.customerPhone == m.noHp) ||
+                    (m.nama.isNotBlank() && r.customerName.trim().equals(m.nama.trim(), ignoreCase = true))
+                )
+            }.sumOf { it.remainingAmount }
+        }
+    }
+    var lastMemberRemainingPiutang by remember { mutableDoubleStateOf(0.0) }
 
     // Shift and Lock States
     val isUserLoggedIn by viewModel.isUserLoggedIn.collectAsState()
@@ -396,6 +414,43 @@ fun PosScreen(
                                 }
                             }
 
+                            // Tombol Sinkronisasi Multi-Device (Dapat diakses Kasir & Owner tanpa terkunci)
+                            val isSyncOnline = (syncConfig.role == com.example.data.sync.SyncRole.SERVER && syncStatus.isServerRunning) ||
+                                    (syncConfig.role == com.example.data.sync.SyncRole.CLIENT && syncStatus.isConnectedToServer)
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = if (isSyncOnline) RetailGreen.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.2f),
+                                modifier = Modifier
+                                    .padding(end = 4.dp)
+                                    .testTag("btn_sync_multi_device")
+                                    .clickable { onNavigateTo(PosNavDestination.SINKRONISASI_MULTI_DEVICE) }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .height(28.dp)
+                                        .padding(horizontal = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.SyncAlt,
+                                        contentDescription = "Sinkronisasi Multi-Device",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        when (syncConfig.role) {
+                                            com.example.data.sync.SyncRole.SERVER -> "SERVER"
+                                            com.example.data.sync.SyncRole.CLIENT -> if (syncStatus.isConnectedToServer) "ONLINE" else "KLIEN"
+                                            else -> "SYNC"
+                                        },
+                                        color = Color.White,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
                             // Tombol Menu SIS (HANYA ICON)
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
@@ -560,6 +615,7 @@ fun PosScreen(
                             isShiftOpen = isShiftOpen,
                             shiftNumber = activeShift,
                             shiftModal = shiftModalAwal,
+                            memberRemainingPiutang = memberRemainingPiutang,
                             onShiftClick = { if (!isShiftOpen) showBukaShiftDialog = true }
                         )
 
@@ -765,6 +821,7 @@ fun PosScreen(
                         shiftNumber = activeShift,
                         shiftModal = shiftModalAwal,
                         isCompact = true,
+                        memberRemainingPiutang = memberRemainingPiutang,
                         onShiftClick = { if (!isShiftOpen) showBukaShiftDialog = true }
                     )
 
@@ -997,14 +1054,30 @@ fun PosScreen(
             storeConfig = storeConfig,
             appliedPoin = appliedPoin,
             members = allMembers,
+            memberRemainingPiutang = memberRemainingPiutang,
             onApplyMemberPoints = { viewModel.applyMemberPoints(it) },
             onApplyVoucher = { viewModel.applyVoucher(it) },
-            onDismiss = { showPaymentDialog = false },
-            onProcessPayment = { caraBayar, tunai, nonTunai, ref ->
+            onDismiss = {
+                viewModel.applyMemberPoints(0)
+                showPaymentDialog = false
+            },
+            onProcessPayment = { caraBayar, tunai, nonTunai, ref, pCustName, pCustPhone, pCustAddress, pDueDate, pNotes ->
                 val currentCartSnapshot = cartItems.toList()
-                viewModel.processCheckout(caraBayar, tunai, nonTunai, ref) { ok, msg, tx ->
+                val currentDebt = memberRemainingPiutang
+                viewModel.processCheckout(
+                    caraBayar = caraBayar,
+                    bayarTunai = tunai,
+                    bayarNonTunai = nonTunai,
+                    refPembayaran = ref,
+                    piutangCustomerName = pCustName,
+                    piutangCustomerPhone = pCustPhone,
+                    piutangCustomerAddress = pCustAddress,
+                    piutangDueDate = pDueDate,
+                    piutangNotes = pNotes
+                ) { ok, msg, tx ->
                     if (ok && tx != null) {
                         lastCompletedCartItems = currentCartSnapshot
+                        lastMemberRemainingPiutang = currentDebt
                         showPaymentDialog = false
                         showReceiptDialog = tx
                     } else {
@@ -1014,6 +1087,7 @@ fun PosScreen(
             },
             onProcessPaymentPiutang = { custName, custPhone, custAddress, dueDate, notes, dpAmount ->
                 val currentCartSnapshot = cartItems.toList()
+                val currentDebt = memberRemainingPiutang
                 viewModel.processCheckoutPiutang(
                     customerName = custName,
                     customerPhone = custPhone,
@@ -1024,6 +1098,7 @@ fun PosScreen(
                 ) { ok, msg, tx ->
                     if (ok && tx != null) {
                         lastCompletedCartItems = currentCartSnapshot
+                        lastMemberRemainingPiutang = currentDebt
                         showPaymentDialog = false
                         showReceiptDialog = tx
                     } else {
@@ -1319,9 +1394,11 @@ fun PosScreen(
             transaction = tx,
             items = if (lastCompletedCartItems.isNotEmpty()) lastCompletedCartItems else cartItems,
             storeConfig = storeConfig,
+            memberRemainingPiutang = lastMemberRemainingPiutang,
             onDismiss = {
                 showReceiptDialog = null
                 lastCompletedCartItems = emptyList()
+                lastMemberRemainingPiutang = 0.0
             }
         )
     }
@@ -2108,6 +2185,7 @@ fun TerminalHeaderBar(
     shiftNumber: Int = 1,
     shiftModal: Double = 100000.0,
     isCompact: Boolean = false,
+    memberRemainingPiutang: Double = 0.0,
     onShiftClick: () -> Unit = {}
 ) {
     Surface(
@@ -2157,7 +2235,9 @@ fun TerminalHeaderBar(
                 )
             }
             Surface(
-                color = if (member != null) RetailGreen else Color.White.copy(alpha = 0.15f),
+                color = if (member != null) {
+                    if (memberRemainingPiutang > 0.0) Color(0xFFDC2626) else RetailGreen
+                } else Color.White.copy(alpha = 0.15f),
                 shape = RoundedCornerShape(4.dp),
                 modifier = Modifier.clickable { onMemberClick() }
             ) {
@@ -2166,18 +2246,28 @@ fun TerminalHeaderBar(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.Default.CardMembership,
+                        if (memberRemainingPiutang > 0.0) Icons.Default.Warning else Icons.Default.CardMembership,
                         contentDescription = null,
                         tint = Color.White,
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        if (member != null) "${member.nama} (${member.poin} Poin)" else "F3 + Member",
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            if (member != null) "${member.nama} (${member.poin} Poin)" else "F3 + Member",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (member != null && memberRemainingPiutang > 0.0) {
+                            Text(
+                                "Piutang: ${formatRupiah(memberRemainingPiutang)}",
+                                color = Color.Yellow,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
                 }
             }
         }

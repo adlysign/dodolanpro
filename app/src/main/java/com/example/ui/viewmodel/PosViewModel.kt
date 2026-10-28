@@ -296,6 +296,10 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         if (dest == PosNavDestination.CLEREK) {
             return cashier.canClerekKasir
         }
+        // Sinkronisasi Multi-Device tidak terkunci: Semua kasir/user dapat membuka & mengatur sinkronisasi
+        if (dest == PosNavDestination.SINKRONISASI_MULTI_DEVICE) {
+            return true
+        }
         // Seluruh menu SIS membutuhkan izin dasar canAccessSis
         if (!cashier.canAccessSis) return false
 
@@ -318,13 +322,17 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             PosNavDestination.PENGATURAN_PRINTER -> cashier.canManageSettings
             PosNavDestination.EDIT_TOKO -> cashier.canManageSettings
             PosNavDestination.BACKUP_RESTORE -> cashier.canBackupRestore
-            PosNavDestination.SINKRONISASI_MULTI_DEVICE -> cashier.canManageSettings
+            PosNavDestination.SINKRONISASI_MULTI_DEVICE -> true
             PosNavDestination.PIUTANG -> cashier.canAccessSis || cashier.isAdmin() || cashier.canViewLaporan
         }
     }
 
     fun navigateTo(dest: PosNavDestination) {
         if (dest == PosNavDestination.KASIR) {
+            _currentDestination.value = dest
+            return
+        }
+        if (dest == PosNavDestination.SINKRONISASI_MULTI_DEVICE) {
             _currentDestination.value = dest
             return
         }
@@ -479,6 +487,9 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     val transactions: StateFlow<List<TransactionEntity>> get() = allTransactions
     val cashiers: StateFlow<List<CashierUserEntity>> get() = allCashiers
     val members: StateFlow<List<MemberEntity>> get() = allMembers
+    val memberPointLogs: StateFlow<List<MemberPointLogEntity>> = repository.allPointLogs
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val allMemberPointLogs: StateFlow<List<MemberPointLogEntity>> get() = memberPointLogs
     val shiftConfigs: StateFlow<List<ShiftConfigEntity>> get() = allShiftConfigs
     val vouchers: StateFlow<List<VoucherEntity>> get() = allVouchers
 
@@ -2031,20 +2042,27 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         syncManager.saveConfig(newConfig)
     }
 
-    fun syncCatalogFromServer(onDone: (Boolean, String) -> Unit) {
+    fun syncCatalogFromServer(targetHost: String? = null, targetPort: Int? = null, onDone: (Boolean, String) -> Unit) {
         viewModelScope.launch {
-            val result = syncManager.syncCatalogFromServer()
+            val result = syncManager.syncCatalogFromServer(targetHost, targetPort)
             onDone(result.first, result.second)
         }
     }
 
-    fun testSyncConnection(onDone: (Boolean, String) -> Unit) {
+    fun testSyncConnection(targetHost: String? = null, targetPort: Int? = null, onDone: (Boolean, String) -> Unit) {
         viewModelScope.launch {
             val localPending = _pendingCarts.value.size + (if (_cartItems.value.isNotEmpty()) 1 else 0)
             val nik = _currentCashier.value?.nik ?: "001"
             val name = _currentCashier.value?.nama ?: "Kasir"
-            val res = syncManager.sendClientHeartbeat(localPending, nik, name)
+            val res = syncManager.sendClientHeartbeat(localPending, nik, name, targetHost, targetPort)
             onDone(res.first, res.second)
+        }
+    }
+
+    fun scanLocalNetworkForServers(onResult: (List<String>) -> Unit) {
+        viewModelScope.launch {
+            val discovered = syncManager.scanLocalSubnetForServers()
+            onResult(discovered)
         }
     }
 
@@ -2162,20 +2180,63 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun adjustMemberPoints(memberNo: String, deltaPoints: Int, onDone: (() -> Unit)? = null) {
+    fun adjustMemberPoints(memberNo: String, deltaPoints: Int, note: String = "Koreksi manual poin", onDone: (() -> Unit)? = null) {
         viewModelScope.launch {
+            val member = repository.getMemberByKey(memberNo)
+            val currentPoin = member?.poin ?: 0
+            val memberNama = member?.nama ?: memberNo
+            val newBal = if (deltaPoints >= 0) currentPoin + deltaPoints else maxOf(0, currentPoin + deltaPoints)
+
             if (deltaPoints >= 0) {
                 repository.addMemberPoints(memberNo, deltaPoints)
             } else {
                 repository.deductMemberPoints(memberNo, -deltaPoints)
             }
+
+            if (deltaPoints != 0) {
+                val logDate = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
+                repository.insertPointLog(
+                    MemberPointLogEntity(
+                        memberNo = memberNo,
+                        memberNama = memberNama,
+                        type = "ADJUSTMENT",
+                        pointsDelta = deltaPoints,
+                        balanceAfter = newBal,
+                        referenceNo = "ADJ-" + System.currentTimeMillis().toString().takeLast(6),
+                        note = note,
+                        tanggal = logDate,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+            }
             onDone?.invoke()
         }
     }
 
-    fun setMemberPoints(memberNo: String, newPoints: Int, onDone: (() -> Unit)? = null) {
+    fun setMemberPoints(memberNo: String, newPoints: Int, note: String = "Penyesuaian saldo poin", onDone: (() -> Unit)? = null) {
         viewModelScope.launch {
+            val member = repository.getMemberByKey(memberNo)
+            val currentPoin = member?.poin ?: 0
+            val memberNama = member?.nama ?: memberNo
+            val delta = newPoints.coerceAtLeast(0) - currentPoin
             repository.setMemberPoints(memberNo, newPoints.coerceAtLeast(0))
+
+            if (delta != 0) {
+                val logDate = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
+                repository.insertPointLog(
+                    MemberPointLogEntity(
+                        memberNo = memberNo,
+                        memberNama = memberNama,
+                        type = "ADJUSTMENT",
+                        pointsDelta = delta,
+                        balanceAfter = newPoints.coerceAtLeast(0),
+                        referenceNo = "SET-" + System.currentTimeMillis().toString().takeLast(6),
+                        note = note,
+                        tanggal = logDate,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+            }
             onDone?.invoke()
         }
     }
@@ -2337,7 +2398,26 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateMember(member: MemberEntity, onDone: () -> Unit = {}) {
         viewModelScope.launch {
+            val existing = repository.getMemberByKey(member.memberNo)
+            val oldPoin = existing?.poin ?: member.poin
             repository.updateMember(member)
+            if (member.poin != oldPoin) {
+                val delta = member.poin - oldPoin
+                val logDate = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
+                repository.insertPointLog(
+                    MemberPointLogEntity(
+                        memberNo = member.memberNo,
+                        memberNama = member.nama,
+                        type = "ADJUSTMENT",
+                        pointsDelta = delta,
+                        balanceAfter = member.poin,
+                        referenceNo = "EDIT-" + member.memberNo,
+                        note = "Penyesuaian saldo poin dari data profil member",
+                        tanggal = logDate,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+            }
             onDone()
         }
     }

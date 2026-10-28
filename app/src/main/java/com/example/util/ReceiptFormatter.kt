@@ -89,16 +89,17 @@ object ReceiptFormatter {
     fun formatReceipt(
         transaction: TransactionEntity,
         items: List<CartItem>,
-        config: StoreConfigEntity
+        config: StoreConfigEntity,
+        memberRemainingPiutang: Double = 0.0
     ): String {
         val width = getLineWidth(config.printerPaperSize)
         val model = config.receiptModel
 
         return when (model) {
-            MODEL_COMPACT_MINIMAL -> formatCompact(transaction, items, config, width)
-            MODEL_CAFE_RESTO -> formatCafe(transaction, items, config, width)
-            MODEL_ELEGANT_BORDER -> formatElegant(transaction, items, config, width)
-            else -> formatStandard(transaction, items, config, width)
+            MODEL_COMPACT_MINIMAL -> formatCompact(transaction, items, config, width, memberRemainingPiutang)
+            MODEL_CAFE_RESTO -> formatCafe(transaction, items, config, width, memberRemainingPiutang)
+            MODEL_ELEGANT_BORDER -> formatElegant(transaction, items, config, width, memberRemainingPiutang)
+            else -> formatStandard(transaction, items, config, width, memberRemainingPiutang)
         }
     }
 
@@ -193,7 +194,8 @@ object ReceiptFormatter {
         tx: TransactionEntity,
         items: List<CartItem>,
         cfg: StoreConfigEntity,
-        w: Int
+        w: Int,
+        memberRemainingPiutang: Double = 0.0
     ): String = buildString {
         val sep = line('-', w)
         val dblSep = line('=', w)
@@ -318,8 +320,19 @@ object ReceiptFormatter {
             } else {
                 appendLine(justify("Cara Bayar", tx.caraBayar, w))
                 if (tx.caraBayar == "CAMPURAN") {
-                    appendLine(justify("  - Tunai", "Rp ${formatRupiah(tx.bayarTunai)}", w))
-                    appendLine(justify("  - Non-Tunai", "Rp ${formatRupiah(tx.bayarNonTunai)}", w))
+                    if (tx.bayarTunai > 0.0) {
+                        appendLine(justify("  - Tunai", "Rp ${formatRupiah(tx.bayarTunai)}", w))
+                    }
+                    if (tx.bayarNonTunai > 0.0) {
+                        appendLine(justify("  - Non-Tunai", "Rp ${formatRupiah(tx.bayarNonTunai)}", w))
+                    }
+                    val sisaPiutang = (tx.grandTotal - (tx.bayarTunai + tx.bayarNonTunai)).coerceAtLeast(0.0)
+                    if (sisaPiutang > 0.0) {
+                        appendLine(justify("  - Sisa Piutang", "Rp ${formatRupiah(sisaPiutang)}", w))
+                    }
+                    if (tx.refPembayaran.isNotBlank()) {
+                        appendLine(justify("  - Info", tx.refPembayaran.take(w - 10), w))
+                    }
                 } else if (tx.caraBayar == "TUNAI") {
                     appendLine(justify("Bayar Tunai", "Rp ${formatRupiah(tx.bayarTunai)}", w))
                 } else {
@@ -328,6 +341,24 @@ object ReceiptFormatter {
                     }
                 }
                 appendLine(justify("Kembalian", "Rp ${formatRupiah(tx.kembalian)}", w))
+            }
+
+            // Sisa Piutang / Hutang Member
+            if (memberRemainingPiutang > 0.0) {
+                appendLine(sep)
+                appendLine(center("INFO PIUTANG / HUTANG MEMBER", w))
+                appendLine(justify("Sisa Piutang Lama", "Rp ${formatRupiah(memberRemainingPiutang)}", w))
+                val newPiutang = when (tx.caraBayar) {
+                    "PIUTANG" -> (tx.grandTotal - tx.bayarTunai).coerceAtLeast(0.0)
+                    "CAMPURAN" -> (tx.grandTotal - (tx.bayarTunai + tx.bayarNonTunai)).coerceAtLeast(0.0)
+                    else -> 0.0
+                }
+                if (newPiutang > 0.0) {
+                    appendLine(justify("Piutang Bon Ini", "Rp ${formatRupiah(newPiutang)}", w))
+                    appendLine(justify("TOTAL HUTANG MEMBER", "Rp ${formatRupiah(memberRemainingPiutang + newPiutang)}", w))
+                } else {
+                    appendLine(justify("Sisa Hutang Berjalan", "Rp ${formatRupiah(memberRemainingPiutang)}", w))
+                }
             }
         }
 
@@ -417,7 +448,8 @@ object ReceiptFormatter {
         tx: TransactionEntity,
         items: List<CartItem>,
         cfg: StoreConfigEntity,
-        w: Int
+        w: Int,
+        memberRemainingPiutang: Double = 0.0
     ): String = buildString {
         val sep = line('-', w)
 
@@ -455,10 +487,31 @@ object ReceiptFormatter {
             val sisa = (tx.grandTotal - tx.bayarTunai).coerceAtLeast(0.0)
             appendLine(justify("Bayar (PIUTANG)", "DP: Rp ${formatRupiah(tx.bayarTunai)}", w))
             appendLine(justify("Sisa Piutang", "Rp ${formatRupiah(sisa)}", w))
+        } else if (tx.caraBayar == "CAMPURAN") {
+            val sisa = (tx.grandTotal - (tx.bayarTunai + tx.bayarNonTunai)).coerceAtLeast(0.0)
+            appendLine(justify("Bayar (CAMPURAN)", "Rp ${formatRupiah(tx.bayarTunai + tx.bayarNonTunai)}", w))
+            if (sisa > 0.0) {
+                appendLine(justify("Sisa Piutang", "Rp ${formatRupiah(sisa)}", w))
+            } else if (tx.kembalian > 0) {
+                appendLine(justify("Kembali", "Rp ${formatRupiah(tx.kembalian)}", w))
+            }
         } else {
             appendLine(justify("Bayar (${tx.caraBayar})", "Rp ${formatRupiah(tx.bayarTunai + tx.bayarNonTunai)}", w))
             if (tx.kembalian > 0) {
                 appendLine(justify("Kembali", "Rp ${formatRupiah(tx.kembalian)}", w))
+            }
+        }
+
+        if (memberRemainingPiutang > 0.0) {
+            appendLine(sep)
+            appendLine(justify("Sisa Piutang Lama", "Rp ${formatRupiah(memberRemainingPiutang)}", w))
+            val newPiutang = when (tx.caraBayar) {
+                "PIUTANG" -> (tx.grandTotal - tx.bayarTunai).coerceAtLeast(0.0)
+                "CAMPURAN" -> (tx.grandTotal - (tx.bayarTunai + tx.bayarNonTunai)).coerceAtLeast(0.0)
+                else -> 0.0
+            }
+            if (newPiutang > 0.0) {
+                appendLine(justify("Total Hutang", "Rp ${formatRupiah(memberRemainingPiutang + newPiutang)}", w))
             }
         }
 
@@ -477,7 +530,8 @@ object ReceiptFormatter {
         tx: TransactionEntity,
         items: List<CartItem>,
         cfg: StoreConfigEntity,
-        w: Int
+        w: Int,
+        memberRemainingPiutang: Double = 0.0
     ): String = buildString {
         val sep = line('-', w)
         val waveSep = line('~', w)
@@ -547,6 +601,21 @@ object ReceiptFormatter {
         appendLine(justify("Metode Bayar", tx.caraBayar, w))
         appendLine(justify("Status", "LUNAS", w))
 
+        if (memberRemainingPiutang > 0.0) {
+            appendLine(sep)
+            appendLine(center("INFO PIUTANG MEMBER", w))
+            appendLine(justify("Sisa Piutang Lama", "Rp ${formatRupiah(memberRemainingPiutang)}", w))
+            val newPiutang = when (tx.caraBayar) {
+                "PIUTANG" -> (tx.grandTotal - tx.bayarTunai).coerceAtLeast(0.0)
+                "CAMPURAN" -> (tx.grandTotal - (tx.bayarTunai + tx.bayarNonTunai)).coerceAtLeast(0.0)
+                else -> 0.0
+            }
+            if (newPiutang > 0.0) {
+                appendLine(justify("Piutang Baru", "Rp ${formatRupiah(newPiutang)}", w))
+                appendLine(justify("Total Hutang", "Rp ${formatRupiah(memberRemainingPiutang + newPiutang)}", w))
+            }
+        }
+
         if (cfg.receiptWifiInfo.isNotBlank()) {
             appendLine(sep)
             appendLine(center("📶 FREE WI-FI & SOSMED", w))
@@ -567,7 +636,8 @@ object ReceiptFormatter {
         tx: TransactionEntity,
         items: List<CartItem>,
         cfg: StoreConfigEntity,
-        w: Int
+        w: Int,
+        memberRemainingPiutang: Double = 0.0
     ): String = buildString {
         val dblSep = line('=', w)
         val dotSep = line('*', w)
@@ -621,6 +691,21 @@ object ReceiptFormatter {
         appendLine(justify("DITERIMA", "Rp ${formatRupiah(tx.bayarTunai + tx.bayarNonTunai)}", w))
         if (tx.kembalian > 0) {
             appendLine(justify("KEMBALI", "Rp ${formatRupiah(tx.kembalian)}", w))
+        }
+
+        if (memberRemainingPiutang > 0.0) {
+            appendLine(sep)
+            appendLine(center("INFORMASI PIUTANG MEMBER", w))
+            appendLine(justify("SISA PIUTANG LAMA", "Rp ${formatRupiah(memberRemainingPiutang)}", w))
+            val newPiutang = when (tx.caraBayar) {
+                "PIUTANG" -> (tx.grandTotal - tx.bayarTunai).coerceAtLeast(0.0)
+                "CAMPURAN" -> (tx.grandTotal - (tx.bayarTunai + tx.bayarNonTunai)).coerceAtLeast(0.0)
+                else -> 0.0
+            }
+            if (newPiutang > 0.0) {
+                appendLine(justify("PIUTANG BON INI", "Rp ${formatRupiah(newPiutang)}", w))
+                appendLine(justify("TOTAL PIUTANG", "Rp ${formatRupiah(memberRemainingPiutang + newPiutang)}", w))
+            }
         }
 
         if (cfg.receiptShowBarcodeSimulation) {

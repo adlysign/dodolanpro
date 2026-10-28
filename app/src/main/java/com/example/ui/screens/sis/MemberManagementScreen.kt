@@ -39,7 +39,12 @@ fun MemberManagementScreen(
     BackHandler { onNavigateBack() }
 
     val members by viewModel.members.collectAsState()
+    val pointLogs by viewModel.memberPointLogs.collectAsState()
     val storeConfig by viewModel.storeConfig.collectAsState()
+
+    var selectedTabIndex by remember { mutableIntStateOf(0) }
+    var historyMemberFilter by remember { mutableStateOf<String?>(null) }
+    var memberForHistoryDialog by remember { mutableStateOf<MemberEntity?>(null) }
 
     var searchQuery by remember { mutableStateOf("") }
     var showAddCard by remember { mutableStateOf(false) }
@@ -115,18 +120,45 @@ fun MemberManagementScreen(
             )
         }
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(PosSurface)
         ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            PrimaryTabRow(
+                selectedTabIndex = selectedTabIndex,
+                containerColor = Color.White,
+                contentColor = RetailNavy,
+                modifier = Modifier.fillMaxWidth()
             ) {
+                Tab(
+                    selected = selectedTabIndex == 0,
+                    onClick = { selectedTabIndex = 0 },
+                    icon = { Icon(Icons.Default.People, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    text = { Text("DAFTAR MEMBER (${members.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                    modifier = Modifier.testTag("tab_daftar_member")
+                )
+                Tab(
+                    selected = selectedTabIndex == 1,
+                    onClick = { selectedTabIndex = 1 },
+                    icon = { Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    text = { Text("RIWAYAT POIN (${pointLogs.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                    modifier = Modifier.testTag("tab_riwayat_poin")
+                )
+            }
+
+            if (selectedTabIndex == 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(PosSurface)
+                ) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                 // Feedback Banner
                 if (feedbackMessage != null) {
                     item {
@@ -423,12 +455,36 @@ fun MemberManagementScreen(
                         MemberItemCard(
                             member = m,
                             onEditClick = { editingMember = m },
-                            onDeleteClick = { memberToDelete = m }
+                            onDeleteClick = { memberToDelete = m },
+                            onHistoryClick = { memberForHistoryDialog = m }
                         )
                     }
                 }
             }
         }
+    } else {
+        MemberPointHistoryView(
+            viewModel = viewModel,
+            initialMemberFilter = historyMemberFilter,
+            onClearInitialFilter = { historyMemberFilter = null },
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+        }
+    }
+
+    // --- DIALOG RIWAYAT POIN PER MEMBER ---
+    if (memberForHistoryDialog != null) {
+        MemberPointHistoryDialog(
+            member = memberForHistoryDialog!!,
+            viewModel = viewModel,
+            onDismiss = { memberForHistoryDialog = null },
+            onViewFullHistory = {
+                historyMemberFilter = memberForHistoryDialog?.memberNo
+                selectedTabIndex = 1
+                memberForHistoryDialog = null
+            }
+        )
     }
 
     // --- DIALOG EDIT MEMBER ---
@@ -484,7 +540,8 @@ fun MemberManagementScreen(
 fun MemberItemCard(
     member: MemberEntity,
     onEditClick: () -> Unit,
-    onDeleteClick: () -> Unit
+    onDeleteClick: () -> Unit,
+    onHistoryClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -561,8 +618,22 @@ fun MemberItemCard(
                     }
                 }
 
-                // Edit and Delete Actions
+                // Riwayat, Edit and Delete Actions
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onHistoryClick,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("history_member_button_${member.memberNo}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = "Riwayat Poin",
+                            tint = Color(0xFFD97706),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
                     IconButton(
                         onClick = onEditClick,
                         modifier = Modifier

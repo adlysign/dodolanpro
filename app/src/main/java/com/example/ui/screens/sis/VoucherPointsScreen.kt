@@ -129,6 +129,13 @@ fun VoucherPointsScreen(
                     text = { Text("DAFTAR VOUCHER (${vouchers.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
                     modifier = Modifier.testTag("tab_daftar_voucher")
                 )
+                Tab(
+                    selected = selectedTabIndex == 3,
+                    onClick = { selectedTabIndex = 3 },
+                    icon = { Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                    text = { Text("RIWAYAT POIN", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                    modifier = Modifier.testTag("tab_riwayat_poin_voucher")
+                )
             }
 
             // Global Notification / Feedback Banner
@@ -193,6 +200,10 @@ fun VoucherPointsScreen(
                         clipboardManager.setText(AnnotatedString(code))
                         Toast.makeText(context, "Kode voucher $code disalin ke clipboard", Toast.LENGTH_SHORT).show()
                     }
+                )
+                3 -> MemberPointHistoryView(
+                    viewModel = viewModel,
+                    modifier = Modifier.fillMaxSize()
                 )
             }
         }

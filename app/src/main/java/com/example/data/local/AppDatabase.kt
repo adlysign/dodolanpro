@@ -10,6 +10,9 @@ import com.example.data.local.entity.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Database(
     entities = [
@@ -34,9 +37,10 @@ import kotlinx.coroutines.launch
         StoreBranchEntity::class,
         ReceivableEntity::class,
         ReceivablePaymentEntity::class,
-        PurchasePaymentEntity::class
+        PurchasePaymentEntity::class,
+        MemberPointLogEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -208,6 +212,25 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_17_18 = object : androidx.room.migration.Migration(17, 18) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS member_point_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        memberNo TEXT NOT NULL,
+                        memberNama TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        pointsDelta INTEGER NOT NULL,
+                        balanceAfter INTEGER NOT NULL,
+                        referenceNo TEXT NOT NULL DEFAULT '',
+                        note TEXT NOT NULL DEFAULT '',
+                        tanggal TEXT NOT NULL DEFAULT '',
+                        timestamp INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val appContext = context.applicationContext
@@ -219,7 +242,8 @@ abstract class AppDatabase : RoomDatabase() {
                     .addMigrations(
                         MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
                         MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
-                        MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17
+                        MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
+                        MIGRATION_17_18
                     )
                     .fallbackToDestructiveMigration()
                     .addCallback(DatabaseCallback(appContext, scope))
@@ -283,6 +307,9 @@ abstract class AppDatabase : RoomDatabase() {
                                     StoreBranchEntity(kodeToko = "TKG-004", namaToko = "Agen Grosir Rokok & Kopi Sentosa", alamat = "Jl. Mangga Dua No. 8", telepon = "0817-7777-8888", keterangan = "Agen Grosir Rokok & Kopi")
                                 )
                             )
+                        }
+                        if (dao.getPointLogsCount() == 0) {
+                            seedSamplePointLogs(dao)
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -461,6 +488,115 @@ abstract class AppDatabase : RoomDatabase() {
                     timestamp = System.currentTimeMillis() - 86400000L
                 )
             )
+
+            seedSamplePointLogs(dao)
+        }
+
+        private suspend fun seedSamplePointLogs(dao: PosDao) {
+            val now = System.currentTimeMillis()
+            val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+            val logs = listOf(
+                MemberPointLogEntity(
+                    memberNo = "MBR-0001",
+                    memberNama = "Budi Santoso",
+                    type = "BONUS",
+                    pointsDelta = 50,
+                    balanceAfter = 50,
+                    referenceNo = "REG-MBR-0001",
+                    note = "Bonus pendaftaran member baru",
+                    tanggal = sdf.format(Date(now - 7 * 86400000L)),
+                    timestamp = now - 7 * 86400000L
+                ),
+                MemberPointLogEntity(
+                    memberNo = "MBR-0001",
+                    memberNama = "Budi Santoso",
+                    type = "EARN",
+                    pointsDelta = 150,
+                    balanceAfter = 200,
+                    referenceNo = "BON-20261020-0012",
+                    note = "Poin diperoleh dari belanja Rp 1.500.000",
+                    tanggal = sdf.format(Date(now - 4 * 86400000L)),
+                    timestamp = now - 4 * 86400000L
+                ),
+                MemberPointLogEntity(
+                    memberNo = "MBR-0001",
+                    memberNama = "Budi Santoso",
+                    type = "REDEEM",
+                    pointsDelta = -100,
+                    balanceAfter = 100,
+                    referenceNo = "BON-20261025-0045",
+                    note = "Penukaran 100 poin untuk potongan belanja pada Bon BON-20261025-0045",
+                    tanggal = sdf.format(Date(now - 2 * 86400000L)),
+                    timestamp = now - 2 * 86400000L
+                ),
+                MemberPointLogEntity(
+                    memberNo = "MBR-0001",
+                    memberNama = "Budi Santoso",
+                    type = "EARN",
+                    pointsDelta = 50,
+                    balanceAfter = 150,
+                    referenceNo = "BON-20261026-0008",
+                    note = "Poin diperoleh dari belanja Rp 500.000",
+                    tanggal = sdf.format(Date(now - 86400000L)),
+                    timestamp = now - 86400000L
+                ),
+                MemberPointLogEntity(
+                    memberNo = "MBR-0002",
+                    memberNama = "Siti Aminah",
+                    type = "BONUS",
+                    pointsDelta = 25,
+                    balanceAfter = 25,
+                    referenceNo = "REG-MBR-0002",
+                    note = "Bonus pendaftaran member baru",
+                    tanggal = sdf.format(Date(now - 5 * 86400000L)),
+                    timestamp = now - 5 * 86400000L
+                ),
+                MemberPointLogEntity(
+                    memberNo = "MBR-0002",
+                    memberNama = "Siti Aminah",
+                    type = "EARN",
+                    pointsDelta = 60,
+                    balanceAfter = 85,
+                    referenceNo = "BON-20261024-0019",
+                    note = "Poin diperoleh dari belanja Rp 600.000",
+                    tanggal = sdf.format(Date(now - 3 * 86400000L)),
+                    timestamp = now - 3 * 86400000L
+                ),
+                MemberPointLogEntity(
+                    memberNo = "MBR-0003",
+                    memberNama = "Ahmad Fauzi",
+                    type = "BONUS",
+                    pointsDelta = 50,
+                    balanceAfter = 50,
+                    referenceNo = "REG-MBR-0003",
+                    note = "Bonus pendaftaran member baru",
+                    tanggal = sdf.format(Date(now - 6 * 86400000L)),
+                    timestamp = now - 6 * 86400000L
+                ),
+                MemberPointLogEntity(
+                    memberNo = "MBR-0003",
+                    memberNama = "Ahmad Fauzi",
+                    type = "EARN",
+                    pointsDelta = 200,
+                    balanceAfter = 250,
+                    referenceNo = "BON-20261021-0033",
+                    note = "Poin diperoleh dari belanja Rp 2.000.000",
+                    tanggal = sdf.format(Date(now - 4 * 86400000L)),
+                    timestamp = now - 4 * 86400000L
+                ),
+                MemberPointLogEntity(
+                    memberNo = "MBR-0003",
+                    memberNama = "Ahmad Fauzi",
+                    type = "REDEEM",
+                    pointsDelta = -40,
+                    balanceAfter = 210,
+                    referenceNo = "BON-20261026-0099",
+                    note = "Penukaran 40 poin untuk potongan belanja pada Bon BON-20261026-0099",
+                    tanggal = sdf.format(Date(now - 12 * 3600000L)),
+                    timestamp = now - 12 * 3600000L
+                )
+            )
+            dao.insertPointLogs(logs)
         }
     }
 }

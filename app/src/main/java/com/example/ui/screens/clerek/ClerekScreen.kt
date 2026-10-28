@@ -235,12 +235,11 @@ fun ClerekScreen(
                                     ClerekRow("Penjualan Tunai Sistem", formatRupiah(record.totalPenjualanTunai), color = RetailGreen)
                                     ClerekRow("Penjualan Non-Tunai Sistem", formatRupiah(record.totalPenjualanNonTunai))
                                     ClerekRow("Total Penjualan Shift", formatRupiah(record.totalPenjualan), isBold = true)
-                                    ClerekRow("Total Donasi", formatRupiah(record.totalDonasi))
                                     ClerekRow("Jumlah Transaksi", "${record.jumlahTransaksi} transaksi")
 
                                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                                    val uangSeharusnya = record.modalAwal + record.totalPenjualanTunai + record.totalDonasi
+                                    val uangSeharusnya = record.modalAwal + record.totalPenjualanTunai
                                     ClerekRow("Uang Fisik Seharusnya di Laci (Modal + Tunai)", formatRupiah(uangSeharusnya), isBold = true)
                                     ClerekRow(
                                         label = when {
@@ -277,7 +276,6 @@ fun ClerekScreen(
                                                     appendLine("Total Jual  : ${formatRupiah(record.totalPenjualan)}")
                                                     appendLine("Tunai Sistem: ${formatRupiah(record.totalPenjualanTunai)}")
                                                     appendLine("Non-Tunai   : ${formatRupiah(record.totalPenjualanNonTunai)}")
-                                                    appendLine("Total Donasi: ${formatRupiah(record.totalDonasi)}")
                                                     appendLine("----------------------------------------")
                                                     appendLine("Uang Fisik  : ${formatRupiah(record.uangSetoranFisik)}")
                                                     appendLine("Seharusnya  : ${formatRupiah(uangSeharusnya)}")

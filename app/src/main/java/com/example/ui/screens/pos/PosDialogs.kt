@@ -872,10 +872,21 @@ fun PaymentDialog(
     storeConfig: StoreConfigEntity,
     appliedPoin: Int,
     members: List<MemberEntity> = emptyList(),
+    memberRemainingPiutang: Double = 0.0,
     onApplyMemberPoints: (Int) -> Unit,
     onApplyVoucher: (String) -> Pair<Boolean, String>,
     onDismiss: () -> Unit,
-    onProcessPayment: (caraBayar: String, bayarTunai: Double, bayarNonTunai: Double, ref: String) -> Unit,
+    onProcessPayment: (
+        caraBayar: String,
+        bayarTunai: Double,
+        bayarNonTunai: Double,
+        ref: String,
+        piutangCustomerName: String,
+        piutangCustomerPhone: String,
+        piutangCustomerAddress: String,
+        piutangDueDate: String,
+        piutangNotes: String
+    ) -> Unit,
     onProcessPaymentPiutang: ((customerName: String, customerPhone: String, customerAddress: String, dueDate: String, notes: String, dpAmount: Double) -> Unit)? = null
 ) {
     var selectedMethod by remember { mutableStateOf("TUNAI") } // TUNAI, QRIS, CAMPURAN, WALLET, CARD, PIUTANG
@@ -891,12 +902,14 @@ fun PaymentDialog(
     var errorMessage by remember { mutableStateOf("") }
     var showPoinCustomDialog by remember { mutableStateOf(false) }
     var customPoinInput by remember { mutableStateOf("") }
+    var useMemberPoints by remember { mutableStateOf(false) } // Default OFF: Member kumpulkan poin
 
-    // Piutang state
+    // Piutang & Campuran Piutang state
     var piutangCustomerName by remember(currentMember) { mutableStateOf(currentMember?.nama ?: "") }
     var piutangCustomerPhone by remember(currentMember) { mutableStateOf(currentMember?.noHp ?: "") }
     var piutangCustomerAddress by remember(currentMember) { mutableStateOf(currentMember?.alamat ?: "") }
     var piutangDpInput by remember { mutableStateOf("") }
+    var campuranPiutangInput by remember { mutableStateOf("") }
     var piutangDueDate by remember {
         val cal = java.util.Calendar.getInstance()
         cal.add(java.util.Calendar.DAY_OF_YEAR, 14)
@@ -907,8 +920,11 @@ fun PaymentDialog(
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    // Otomatis arahkan kursor ke kolom nominal saat masuk pembayaran
+    // Otomatis arahkan kursor ke kolom nominal saat masuk pembayaran & pastikan poin default OFF (0)
     LaunchedEffect(Unit) {
+        if (!useMemberPoints && appliedPoin > 0) {
+            onApplyMemberPoints(0)
+        }
         delay(60)
         for (i in 1..4) {
             try {
@@ -1008,82 +1024,230 @@ fun PaymentDialog(
                     }
 
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = if (storeConfig.poinAktif) RetailGreenLight else Color(0xFFF1F5F9))
+                        modifier = Modifier.fillMaxWidth().testTag("member_points_card"),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (useMemberPoints && storeConfig.poinAktif) RetailGreenLight else Color(0xFFF1F5F9)
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (useMemberPoints && storeConfig.poinAktif) RetailGreen.copy(alpha = 0.5f) else Color(0xFFCBD5E1)
+                        )
                     ) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
+                            // Row 1: Info Member & Switch Opsi Gunakan Poin
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("Member: ${currentMember.nama} (${currentMember.poin} Poin)", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = if (storeConfig.poinAktif) RetailGreen else Color.Gray)
-                                    if (!storeConfig.poinAktif) {
-                                        Text("Program poin loyalty sedang dinonaktifkan di pengaturan", fontSize = 10.sp, color = Color.Gray)
-                                    } else {
-                                        val minNote = if (storeConfig.minPoinRedeem > 0) " • Min. ${storeConfig.minPoinRedeem} pt" else ""
-                                        val capNote = if (!storeConfig.poinBisaGunakanSemua) " • Maks. ${storeConfig.poinMaksPersenBelanja.toInt()}% belanja" else " • Bisa Semua (100%)"
-                                        val minBelanjaNote = if (storeConfig.minBelanjaGunakanPoin > 0) " • Min. belanja ${formatRupiah(storeConfig.minBelanjaGunakanPoin)}" else ""
-                                        Text("1 Poin = ${formatRupiah(storeConfig.nilaiPerPoin)}$capNote$minNote$minBelanjaNote", fontSize = 10.sp, color = Color.Black)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Default.CardMembership,
+                                            contentDescription = null,
+                                            tint = if (useMemberPoints) RetailGreen else RetailNavy,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            "Member: ${currentMember.nama}",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = Color.Black
+                                        )
+                                    }
+                                    Text(
+                                        "Saldo Poin: ${currentMember.poin} Poin (${formatRupiah(currentMember.poin * storeConfig.nilaiPerPoin)})",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (storeConfig.poinAktif) (if (useMemberPoints) RetailGreen else RetailNavy) else Color.Gray
+                                    )
+                                    if (memberRemainingPiutang > 0.0) {
+                                        Surface(
+                                            color = Color(0xFFFEE2E2),
+                                            shape = RoundedCornerShape(4.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                                            modifier = Modifier.padding(top = 4.dp).testTag("preview_member_piutang_badge")
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.WarningAmber,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFDC2626),
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    "Sisa Piutang Belum Lunas: ${formatRupiah(memberRemainingPiutang)}",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF991B1B)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 
                                 if (storeConfig.poinAktif) {
-                                    if (appliedPoin > 0) {
+                                    // Switch Opsi Gunakan Poin (Default: OFF / Kumpulkan Poin)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .background(
+                                                if (useMemberPoints) RetailGreen.copy(alpha = 0.15f) else Color(0xFFE2E8F0),
+                                                RoundedCornerShape(20.dp)
+                                            )
+                                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            if (useMemberPoints) "Gunakan Poin" else "Kumpulkan Poin",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (useMemberPoints) RetailGreen else Color(0xFF475569)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Switch(
+                                            checked = useMemberPoints,
+                                            onCheckedChange = { checked ->
+                                                useMemberPoints = checked
+                                                if (!checked) {
+                                                    onApplyMemberPoints(0)
+                                                } else {
+                                                    if (maxUsable > 0) {
+                                                        onApplyMemberPoints(maxUsable)
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.height(26.dp).testTag("switch_use_member_points"),
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color.White,
+                                                checkedTrackColor = RetailGreen,
+                                                uncheckedThumbColor = Color.White,
+                                                uncheckedTrackColor = Color(0xFF94A3B8)
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            if (!storeConfig.poinAktif) {
+                                Text("Program loyalty poin dinonaktifkan di pengaturan toko.", fontSize = 10.sp, color = Color.Gray)
+                            } else if (!useMemberPoints) {
+                                // Default OFF note: Kumpulkan Poin
+                                Surface(
+                                    color = Color(0xFFE0F2FE),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Savings,
+                                            contentDescription = null,
+                                            tint = Color(0xFF0284C7),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            "Mode Kumpulkan Poin (Default: OFF) — Poin tidak digunakan/dipotong. Transaksi ini akan menambah saldo poin loyalty member.",
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF0369A1),
+                                            lineHeight = 13.sp
+                                        )
+                                    }
+                                }
+                            } else {
+                                // useMemberPoints is TRUE: Tukar Poin
+                                val minNote = if (storeConfig.minPoinRedeem > 0) " • Min. ${storeConfig.minPoinRedeem} pt" else ""
+                                val capNote = if (!storeConfig.poinBisaGunakanSemua) " • Maks. ${storeConfig.poinMaksPersenBelanja.toInt()}% belanja" else " • Bisa Semua (100%)"
+                                val minBelanjaNote = if (storeConfig.minBelanjaGunakanPoin > 0) " • Min. belanja ${formatRupiah(storeConfig.minBelanjaGunakanPoin)}" else ""
+                                Text("Ketentuan: 1 Poin = ${formatRupiah(storeConfig.nilaiPerPoin)}$capNote$minNote$minBelanjaNote", fontSize = 10.sp, color = Color(0xFF334155))
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                if (appliedPoin > 0) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color.White, RoundedCornerShape(6.dp))
+                                            .border(1.dp, RetailGreen, RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("-${formatRupiah(appliedPoin * storeConfig.nilaiPerPoin)}", fontWeight = FontWeight.Bold, color = RetailGreen, fontSize = 12.sp)
+                                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = RetailGreen, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                "Potongan Belanja: -${formatRupiah(appliedPoin * storeConfig.nilaiPerPoin)} ($appliedPoin Poin)",
+                                                fontWeight = FontWeight.Bold,
+                                                color = RetailGreen,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                        Row {
                                             TextButton(
                                                 onClick = {
                                                     customPoinInput = appliedPoin.toString()
                                                     showPoinCustomDialog = true
                                                 },
-                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                                modifier = Modifier.height(28.dp)
                                             ) {
-                                                Text("Ubah", fontSize = 10.sp)
+                                                Text("Ubah Poin", fontSize = 10.sp)
                                             }
                                             TextButton(
-                                                onClick = { onApplyMemberPoints(0) },
-                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                                onClick = {
+                                                    onApplyMemberPoints(0)
+                                                    useMemberPoints = false
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                                modifier = Modifier.height(28.dp)
                                             ) {
-                                                Text("Batal", fontSize = 10.sp, color = RetailRedPrimary)
+                                                Text("Batal (Kumpulkan)", fontSize = 10.sp, color = RetailRedPrimary)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    if (maxUsable > 0) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Button(
+                                                onClick = { onApplyMemberPoints(maxUsable) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = RetailGreen),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                                modifier = Modifier.height(30.dp)
+                                            ) {
+                                                Text("Gunakan Semua ($maxUsable pt)", fontSize = 10.sp)
+                                            }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    customPoinInput = maxUsable.toString()
+                                                    showPoinCustomDialog = true
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                modifier = Modifier.height(30.dp)
+                                            ) {
+                                                Text("Pilih Sebagian Poin", fontSize = 10.sp)
                                             }
                                         }
                                     } else {
-                                        if (maxUsable > 0) {
-                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                Button(
-                                                    onClick = { onApplyMemberPoints(maxUsable) },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = RetailGreen),
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                                    modifier = Modifier.height(30.dp)
-                                                ) {
-                                                    Text("Gunakan Semua ($maxUsable pt)", fontSize = 10.sp)
-                                                }
-                                                OutlinedButton(
-                                                    onClick = {
-                                                        customPoinInput = maxUsable.toString()
-                                                        showPoinCustomDialog = true
-                                                    },
-                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                                                    modifier = Modifier.height(30.dp)
-                                                ) {
-                                                    Text("Pilih Poin", fontSize = 10.sp)
-                                                }
-                                            }
-                                        } else {
-                                            Text(
-                                                text = when {
-                                                    !memenuhiMinBelanja -> "Min. belanja ${formatRupiah(storeConfig.minBelanjaGunakanPoin)}"
-                                                    !memenuhiMinPoin -> "Min. ${storeConfig.minPoinRedeem} Poin"
-                                                    else -> "Poin Kosong"
-                                                },
-                                                fontSize = 10.sp,
-                                                color = Color.Gray,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
+                                        Text(
+                                            text = when {
+                                                !memenuhiMinBelanja -> "Syarat belum terpenuhi: Min. belanja ${formatRupiah(storeConfig.minBelanjaGunakanPoin)}"
+                                                !memenuhiMinPoin -> "Syarat belum terpenuhi: Min. ${storeConfig.minPoinRedeem} Poin"
+                                                else -> "Poin tidak mencukupi untuk ditukarkan."
+                                            },
+                                            fontSize = 10.sp,
+                                            color = Color(0xFFC62828),
+                                            fontWeight = FontWeight.Medium
+                                        )
                                     }
                                 }
                             }
@@ -1199,23 +1363,37 @@ fun PaymentDialog(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         listOf("WALLET", "CARD", "PIUTANG").forEach { method ->
                             val isSelected = selectedMethod == method
+                            val isPiutangLocked = method == "PIUTANG" && currentMember == null
                             Button(
-                                onClick = { selectedMethod = method },
+                                onClick = {
+                                    selectedMethod = method
+                                    if (isPiutangLocked) {
+                                        errorMessage = "Pembayaran Piutang hanya diizinkan untuk Member terdaftar!"
+                                    }
+                                },
                                 modifier = Modifier.weight(1f).height(38.dp).testTag("payment_tab_$method"),
                                 shape = RoundedCornerShape(6.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = if (isSelected) {
-                                        if (method == "PIUTANG") Color(0xFFE65100) else RetailNavy
+                                        if (isPiutangLocked) Color(0xFFB71C1C) else if (method == "PIUTANG") Color(0xFFE65100) else RetailNavy
+                                    } else if (isPiutangLocked) {
+                                        Color(0xFFF1F5F9)
                                     } else PosSurfaceVariant,
-                                    contentColor = if (isSelected) Color.White else Color.Black
+                                    contentColor = if (isSelected) Color.White else if (isPiutangLocked) Color.Gray else Color.Black
                                 ),
                                 contentPadding = PaddingValues(2.dp)
                             ) {
-                                Text(
-                                    if (method == "PIUTANG") "PIUTANG" else method,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        if (isPiutangLocked) "PIUTANG" else if (method == "PIUTANG") "PIUTANG" else method,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    if (isPiutangLocked) {
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Icon(Icons.Default.Lock, contentDescription = "Khusus Member", modifier = Modifier.size(11.dp))
+                                    }
+                                }
                             }
                         }
                     }
@@ -1249,7 +1427,7 @@ fun PaymentDialog(
                                         onDone = {
                                             keyboardController?.hide()
                                             if (numericCash >= grandTotal) {
-                                                onProcessPayment("TUNAI", numericCash, 0.0, "TUNAI")
+                                                onProcessPayment("TUNAI", numericCash, 0.0, "TUNAI", "", "", "", "", "")
                                             }
                                         }
                                     ),
@@ -1314,92 +1492,459 @@ fun PaymentDialog(
                         }
 
                         "CAMPURAN" -> {
-                            // Split Payment: Tunai + Non-Tunai
+                            val numericSplitPiutang = campuranPiutangInput.toDoubleOrNull() ?: 0.0
+                            val totalSplitPaid = numericCash + numericNonCash + numericSplitPiutang
+                            val sisaKurang = (grandTotal - totalSplitPaid).coerceAtLeast(0.0)
+
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = RetailAmberLight)
+                                    colors = CardDefaults.cardColors(containerColor = RetailAmberLight),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFB74D))
                                 ) {
-                                    Text(
-                                        "PEMBAYARAN CAMPURAN: Bayar sebagian dengan Tunai dan sisanya Non-Tunai (EDC/QRIS).",
-                                        fontSize = 11.sp,
-                                        color = Color(0xFF6D4C41),
-                                        modifier = Modifier.padding(6.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                Text("1. Bayar Tunai (Rp):", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
-                                OutlinedTextField(
-                                    value = cashInput,
-                                    onValueChange = {
-                                        cashInput = it
-                                        val cVal = it.toDoubleOrNull() ?: 0.0
-                                        val sisa = (grandTotal - cVal).coerceAtLeast(0.0)
-                                        nonCashInput = sisa.toLong().toString()
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .focusRequester(focusRequester),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    placeholder = { Text("Ketik nominal uang tunai...", color = Color.Gray) },
-                                    singleLine = true,
-                                    colors = retailTextFieldColors()
-                                )
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                Text("2. Sisa Bayar Non-Tunai (EDC / QRIS):", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
-                                OutlinedTextField(
-                                    value = nonCashInput,
-                                    onValueChange = { nonCashInput = it },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    singleLine = true,
-                                    colors = retailTextFieldColors()
-                                )
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    listOf("BCA EDC", "MANDIRI", "QRIS", "DANA").forEach { b ->
-                                        FilterChip(
-                                            selected = selectedCardBank == b,
-                                            onClick = { selectedCardBank = b },
-                                            label = { Text(b, fontSize = 10.sp) }
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Text(
+                                            "PEMBAYARAN CAMPURAN (SPLIT PAYMENT)",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF6D4C41)
+                                        )
+                                        Text(
+                                            "Gabungkan Tunai, Non-Tunai (EDC/QRIS), dan Piutang (Kasbon/Tempo) dalam 1 transaksi kasir.",
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF5D4037)
                                         )
                                     }
                                 }
 
-                                if (selectedCardBank == "QRIS") {
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                // Shortcut Pola Split
+                                Text("Pilihan Pola Pembayaran Campuran:", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    val isTunaiPiutang = numericSplitPiutang > 0 && numericNonCash == 0.0
+                                    val isTunaiNonTunai = numericNonCash > 0 && numericSplitPiutang == 0.0
+                                    val isNonTunaiPiutang = numericSplitPiutang > 0 && numericCash == 0.0
+
+                                    FilterChip(
+                                        selected = isTunaiPiutang,
+                                        onClick = {
+                                            if (currentMember == null) {
+                                                errorMessage = "Porsi Piutang dalam pembayaran Campuran hanya diizinkan untuk Member terdaftar!"
+                                            } else {
+                                                nonCashInput = "0"
+                                                val c = cashInput.toDoubleOrNull() ?: (grandTotal / 2)
+                                                cashInput = c.toLong().toString()
+                                                campuranPiutangInput = (grandTotal - c).coerceAtLeast(0.0).toLong().toString()
+                                            }
+                                        },
+                                        label = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(if (currentMember == null) "Tunai + Piutang (Member)" else "Tunai + Piutang", fontSize = 10.sp)
+                                                if (currentMember == null) {
+                                                    Spacer(modifier = Modifier.width(2.dp))
+                                                    Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(10.dp))
+                                                }
+                                            }
+                                        },
+                                        leadingIcon = if (isTunaiPiutang) { { Icon(Icons.Default.Check, null, modifier = Modifier.size(12.dp)) } } else null
+                                    )
+                                    FilterChip(
+                                        selected = isTunaiNonTunai,
+                                        onClick = {
+                                            campuranPiutangInput = "0"
+                                            val c = cashInput.toDoubleOrNull() ?: (grandTotal / 2)
+                                            cashInput = c.toLong().toString()
+                                            nonCashInput = (grandTotal - c).coerceAtLeast(0.0).toLong().toString()
+                                        },
+                                        label = { Text("Tunai + Non-Tunai", fontSize = 10.sp) },
+                                        leadingIcon = if (isTunaiNonTunai) { { Icon(Icons.Default.Check, null, modifier = Modifier.size(12.dp)) } } else null
+                                    )
+                                    FilterChip(
+                                        selected = isNonTunaiPiutang,
+                                        onClick = {
+                                            if (currentMember == null) {
+                                                errorMessage = "Porsi Piutang dalam pembayaran Campuran hanya diizinkan untuk Member terdaftar!"
+                                            } else {
+                                                cashInput = "0"
+                                                val nc = nonCashInput.toDoubleOrNull() ?: (grandTotal / 2)
+                                                nonCashInput = nc.toLong().toString()
+                                                campuranPiutangInput = (grandTotal - nc).coerceAtLeast(0.0).toLong().toString()
+                                            }
+                                        },
+                                        label = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(if (currentMember == null) "Non-Tunai + Piutang (Member)" else "Non-Tunai + Piutang", fontSize = 10.sp)
+                                                if (currentMember == null) {
+                                                    Spacer(modifier = Modifier.width(2.dp))
+                                                    Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(10.dp))
+                                                }
+                                            }
+                                        },
+                                        leadingIcon = if (isNonTunaiPiutang) { { Icon(Icons.Default.Check, null, modifier = Modifier.size(12.dp)) } } else null
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                // 1. Bayar Tunai
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("1. Bayar Tunai (Rp):", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.Black)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        TextButton(
+                                            onClick = {
+                                                val sisa = (grandTotal - numericNonCash - numericSplitPiutang).coerceAtLeast(0.0)
+                                                cashInput = sisa.toLong().toString()
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                            modifier = Modifier.height(24.dp)
+                                        ) {
+                                            Text("+ Sisa ke Tunai", fontSize = 10.sp, color = RetailNavy)
+                                        }
+                                        TextButton(
+                                            onClick = { cashInput = "0" },
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                            modifier = Modifier.height(24.dp)
+                                        ) {
+                                            Text("Rp 0", fontSize = 10.sp, color = Color.Gray)
+                                        }
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = cashInput,
+                                    onValueChange = { cashInput = it },
+                                    modifier = Modifier.fillMaxWidth().testTag("campuran_cash_input"),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    placeholder = { Text("Nominal Tunai (Rp)", color = Color.Gray) },
+                                    singleLine = true,
+                                    colors = retailTextFieldColors()
+                                )
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                // 2. Bayar Non-Tunai (EDC / QRIS / Transfer)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("2. Bayar Non-Tunai (EDC / QRIS / Transfer):", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.Black)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        TextButton(
+                                            onClick = {
+                                                val sisa = (grandTotal - numericCash - numericSplitPiutang).coerceAtLeast(0.0)
+                                                nonCashInput = sisa.toLong().toString()
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                            modifier = Modifier.height(24.dp)
+                                        ) {
+                                            Text("+ Sisa ke Non-Tunai", fontSize = 10.sp, color = RetailNavy)
+                                        }
+                                        TextButton(
+                                            onClick = { nonCashInput = "0" },
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                            modifier = Modifier.height(24.dp)
+                                        ) {
+                                            Text("Rp 0", fontSize = 10.sp, color = Color.Gray)
+                                        }
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = nonCashInput,
+                                    onValueChange = { nonCashInput = it },
+                                    modifier = Modifier.fillMaxWidth().testTag("campuran_noncash_input"),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    placeholder = { Text("Nominal Non-Tunai (Rp)", color = Color.Gray) },
+                                    singleLine = true,
+                                    colors = retailTextFieldColors()
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf("BCA EDC", "MANDIRI", "BRI", "BNI", "QRIS", "DANA").forEach { b ->
+                                        FilterChip(
+                                            selected = selectedCardBank == b,
+                                            onClick = { selectedCardBank = b },
+                                            label = { Text(b, fontSize = 9.sp) }
+                                        )
+                                    }
+                                }
+
+                                if (selectedCardBank == "QRIS" && numericNonCash > 0) {
+                                    Spacer(modifier = Modifier.height(6.dp))
                                     Card(
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
                                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1))
                                     ) {
                                         Column(
-                                            modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                            modifier = Modifier.fillMaxWidth().padding(8.dp),
                                             horizontalAlignment = Alignment.CenterHorizontally
                                         ) {
                                             Text(
-                                                "QRIS PEMBAYARAN CAMPURAN (Sisa: ${formatRupiah(numericNonCash)})",
+                                                "QRIS CAMPURAN: ${formatRupiah(numericNonCash)}",
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 11.sp,
                                                 color = Color(0xFF1E3A8A)
                                             )
-                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Spacer(modifier = Modifier.height(4.dp))
                                             QrisBarcodeView(
                                                 data = storeConfig.qrisData.ifBlank { "00020101021226600016ID.CO.QRIS.WWW01189360050300000870940215000001234567890520454995802ID5910DODOLANPRO6007JAKARTA61051234062070703A016304" },
-                                                sizeDp = 135.dp
+                                                sizeDp = 120.dp
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // 3. Bayar Piutang / Kasbon
+                                if (currentMember == null) {
+                                    Surface(
+                                        color = Color(0xFFFEE2E2),
+                                        shape = RoundedCornerShape(6.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("campuran_piutang_locked_banner")
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column {
+                                                Text(
+                                                    "Porsi Piutang Campuran Terkunci (Khusus Member)",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFFB91C1C)
+                                                )
+                                                Text(
+                                                    "Pelanggan non-member tidak diizinkan menggunakan pembayaran piutang. Silakan lunasi belanja melalui Tunai / Non-Tunai.",
+                                                    fontSize = 10.sp,
+                                                    color = Color(0xFF7F1D1D)
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.CreditScore, contentDescription = null, tint = Color(0xFFE65100), modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("3. Bayar Piutang / Kasbon (Tempo):", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFFE65100))
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            TextButton(
+                                                onClick = {
+                                                    val sisa = (grandTotal - numericCash - numericNonCash).coerceAtLeast(0.0)
+                                                    campuranPiutangInput = sisa.toLong().toString()
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                                modifier = Modifier.height(24.dp)
+                                            ) {
+                                                Text("+ Sisa ke Piutang", fontSize = 10.sp, color = Color(0xFFE65100), fontWeight = FontWeight.Bold)
+                                            }
+                                            TextButton(
+                                                onClick = { campuranPiutangInput = "0" },
+                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                                modifier = Modifier.height(24.dp)
+                                            ) {
+                                                Text("Rp 0", fontSize = 10.sp, color = Color.Gray)
+                                            }
+                                        }
+                                    }
+                                    OutlinedTextField(
+                                        value = campuranPiutangInput,
+                                        onValueChange = { campuranPiutangInput = it },
+                                        modifier = Modifier.fillMaxWidth().testTag("campuran_piutang_input"),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        placeholder = { Text("Nominal Piutang / Kasbon (Rp)", color = Color.Gray) },
+                                        singleLine = true,
+                                        colors = retailTextFieldColors()
+                                    )
+                                }
+
+                                // Data Debitur jika ada porsi piutang
+                                if (numericSplitPiutang > 0.0) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFB74D))
+                                    ) {
+                                        Column(modifier = Modifier.padding(8.dp)) {
+                                            Text(
+                                                "DATA DEBITUR PIUTANG CAMPURAN (${formatRupiah(numericSplitPiutang)})",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 11.sp,
+                                                color = Color(0xFFE65100)
                                             )
                                             Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                "NMID: ${storeConfig.qrisNmid.ifBlank { "ID1020030040050" }}",
-                                                fontSize = 10.sp,
-                                                color = Color(0xFF64748B)
+
+                                            OutlinedTextField(
+                                                value = piutangCustomerName,
+                                                onValueChange = { piutangCustomerName = it },
+                                                modifier = Modifier.fillMaxWidth().testTag("campuran_piutang_customer_name"),
+                                                label = { Text("Nama Pelanggan / Debitur *") },
+                                                placeholder = { Text("Contoh: Ibu Siti / Toko Mandiri") },
+                                                leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = RetailNavy) },
+                                                singleLine = true,
+                                                colors = retailTextFieldColors()
                                             )
+
+                                            if (members.isNotEmpty() && currentMember == null) {
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                LazyRow(
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                                                ) {
+                                                    items(members.take(6)) { m ->
+                                                        FilterChip(
+                                                            selected = piutangCustomerName.equals(m.nama, ignoreCase = true),
+                                                            onClick = {
+                                                                piutangCustomerName = m.nama
+                                                                piutangCustomerPhone = m.noHp
+                                                                piutangCustomerAddress = m.alamat
+                                                            },
+                                                            label = { Text(m.nama, fontSize = 9.sp) }
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                OutlinedTextField(
+                                                    value = piutangCustomerPhone,
+                                                    onValueChange = { piutangCustomerPhone = it },
+                                                    modifier = Modifier.weight(1f),
+                                                    label = { Text("No. HP / WA") },
+                                                    singleLine = true,
+                                                    colors = retailTextFieldColors()
+                                                )
+                                                OutlinedTextField(
+                                                    value = piutangDueDate,
+                                                    onValueChange = { piutangDueDate = it },
+                                                    modifier = Modifier.weight(1f),
+                                                    label = { Text("Jatuh Tempo") },
+                                                    singleLine = true,
+                                                    colors = retailTextFieldColors()
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                listOf(7, 14, 30).forEach { days ->
+                                                    val cal = java.util.Calendar.getInstance()
+                                                    cal.add(java.util.Calendar.DAY_OF_YEAR, days)
+                                                    val dt = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(cal.time)
+                                                    FilterChip(
+                                                        selected = piutangDueDate == dt,
+                                                        onClick = { piutangDueDate = dt },
+                                                        label = { Text("+$days Hari", fontSize = 9.sp) }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Ringkasan Alokasi Pembayaran Campuran
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (totalSplitPaid >= grandTotal) Color(0xFFF0FDF4) else Color(0xFFFEF2F2)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (totalSplitPaid >= grandTotal) RetailGreen.copy(alpha = 0.5f) else Color(0xFFEF9A9A)
+                                    )
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Total Tagihan Transaksi:", fontSize = 11.sp, color = Color.Gray)
+                                            Text(formatRupiah(grandTotal), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Total Terbayar Campuran:", fontSize = 11.sp, color = Color.Gray)
+                                            Text(
+                                                formatRupiah(totalSplitPaid),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (totalSplitPaid >= grandTotal) RetailGreen else Color(0xFFC62828)
+                                            )
+                                        }
+                                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color(0xFFE2E8F0))
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (totalSplitPaid < grandTotal) {
+                                                Text(
+                                                    "SISA KEKURANGAN:",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFC62828)
+                                                )
+                                                Text(
+                                                    formatRupiah(sisaKurang),
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color(0xFFC62828)
+                                                )
+                                            } else {
+                                                val kembalianCampuran = (totalSplitPaid - grandTotal).coerceAtLeast(0.0)
+                                                Text(
+                                                    if (kembalianCampuran > 0.0) "KEMBALIAN TUNAI:" else "STATUS:",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = RetailGreen
+                                                )
+                                                Text(
+                                                    if (kembalianCampuran > 0.0) formatRupiah(kembalianCampuran) else "LUNAS / SESUAI",
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = RetailGreen
+                                                )
+                                            }
+                                        }
+
+                                        if (currentMember != null && memberRemainingPiutang > 0.0) {
+                                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color(0xFFEF9A9A))
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("Sisa Piutang Lama Member:", fontSize = 11.sp, color = Color(0xFFB71C1C), fontWeight = FontWeight.Bold)
+                                                Text(formatRupiah(memberRemainingPiutang), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB71C1C))
+                                            }
+                                            if (numericSplitPiutang > 0.0) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text("Total Akumulasi Hutang:", fontSize = 11.sp, color = Color(0xFF7F1D1D), fontWeight = FontWeight.Black)
+                                                    Text(formatRupiah(memberRemainingPiutang + numericSplitPiutang), fontSize = 13.sp, fontWeight = FontWeight.Black, color = Color(0xFF7F1D1D))
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -1497,176 +2042,232 @@ fun PaymentDialog(
                             val sisaPiutang = (grandTotal - numericPiutangDp).coerceAtLeast(0.0)
 
                             Column(modifier = Modifier.fillMaxWidth()) {
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFB74D))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                if (currentMember == null) {
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 8.dp)
+                                            .testTag("piutang_rejected_card"),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFEE2E2)),
+                                        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFEF4444))
                                     ) {
-                                        Icon(Icons.Default.CreditScore, contentDescription = null, tint = Color(0xFFE65100), modifier = Modifier.size(28.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Column {
-                                            Text("PEMBAYARAN PIUTANG / KASBON", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFFE65100))
-                                            Text("Tagihan belanja akan dicatat ke saldo hutang debitur untuk dilunasi nanti.", fontSize = 10.sp, color = Color(0xFF795548))
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // 1. Debitur Info
-                                Text("1. Data Debitur / Pelanggan *", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                OutlinedTextField(
-                                    value = piutangCustomerName,
-                                    onValueChange = { piutangCustomerName = it },
-                                    modifier = Modifier.fillMaxWidth().testTag("piutang_customer_name"),
-                                    label = { Text("Nama Pelanggan / Debitur *") },
-                                    placeholder = { Text("Contoh: Ibu Rina / Warung Berkah") },
-                                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = RetailNavy) },
-                                    singleLine = true,
-                                    colors = retailTextFieldColors()
-                                )
-
-                                // Quick pick chips from member list
-                                if (members.isNotEmpty() && currentMember == null) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text("Pilih cepat dari Data Member Terdaftar:", fontSize = 10.sp, color = Color.Gray)
-                                    LazyRow(
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
-                                    ) {
-                                        items(members.take(8)) { m ->
-                                            FilterChip(
-                                                selected = piutangCustomerName.equals(m.nama, ignoreCase = true),
-                                                onClick = {
-                                                    piutangCustomerName = m.nama
-                                                    piutangCustomerPhone = m.noHp
-                                                    piutangCustomerAddress = m.alamat
-                                                },
-                                                label = { Text(m.nama, fontSize = 10.sp) }
+                                        Column(
+                                            modifier = Modifier.padding(16.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Block,
+                                                contentDescription = null,
+                                                tint = Color(0xFFDC2626),
+                                                modifier = Modifier.size(36.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                "PEMBAYARAN PIUTANG DITOLAK",
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 14.sp,
+                                                color = Color(0xFFB91C1C)
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                "Konsumen Bukan Member! Pembayaran Piutang (Kasbon / Tempo) TIDAK DIIZINKAN untuk pelanggan umum / non-member.",
+                                                fontSize = 12.sp,
+                                                textAlign = TextAlign.Center,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFF1E293B)
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                "Hanya member terdaftar yang dapat mencatat kasbon/piutang. Silakan tekan tombol 'Pilih / Ganti Member' di bagian atas atau ganti metode ke Tunai / QRIS / EDC.",
+                                                fontSize = 11.sp,
+                                                textAlign = TextAlign.Center,
+                                                color = Color(0xFF64748B)
                                             )
                                         }
                                     }
-                                }
-
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    OutlinedTextField(
-                                        value = piutangCustomerPhone,
-                                        onValueChange = { piutangCustomerPhone = it },
-                                        modifier = Modifier.weight(1f).testTag("piutang_customer_phone"),
-                                        label = { Text("No. HP / WA (Opsional)") },
-                                        placeholder = { Text("08xxxxxxxx") },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                                        singleLine = true,
-                                        colors = retailTextFieldColors()
-                                    )
-                                    OutlinedTextField(
-                                        value = piutangCustomerAddress,
-                                        onValueChange = { piutangCustomerAddress = it },
-                                        modifier = Modifier.weight(1f).testTag("piutang_customer_address"),
-                                        label = { Text("Alamat / Lokasi (Opsional)") },
-                                        placeholder = { Text("RT/RW / Blok") },
-                                        singleLine = true,
-                                        colors = retailTextFieldColors()
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // 2. Uang Muka DP
-                                Text("2. Uang Muka / Pembayaran Awal (DP Tunai):", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                OutlinedTextField(
-                                    value = piutangDpInput,
-                                    onValueChange = { piutangDpInput = it },
-                                    modifier = Modifier.fillMaxWidth().testTag("piutang_dp_input"),
-                                    label = { Text("Uang Muka / DP (Rp)") },
-                                    placeholder = { Text("Ketik 0 jika tanpa DP...") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    singleLine = true,
-                                    colors = retailTextFieldColors()
-                                )
-
-                                // DP Quick Buttons
-                                Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    listOf(0.0, 20000.0, 50000.0, 100000.0).forEach { dpAmt ->
-                                        OutlinedButton(
-                                            onClick = { piutangDpInput = if (dpAmt == 0.0) "0" else dpAmt.toLong().toString() },
-                                            modifier = Modifier.weight(1f),
-                                            contentPadding = PaddingValues(2.dp)
+                                } else {
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFB74D))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(if (dpAmt == 0.0) "Tanpa DP" else formatRupiah(dpAmt), fontSize = 10.sp, color = Color.Black)
+                                            Icon(Icons.Default.CreditScore, contentDescription = null, tint = Color(0xFFE65100), modifier = Modifier.size(28.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column {
+                                                Text("PEMBAYARAN PIUTANG / KASBON MEMBER", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFFE65100))
+                                                Text("Member: ${currentMember.nama} (${currentMember.memberNo})", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                                                Text("Tagihan belanja akan dicatat ke saldo hutang member untuk dilunasi nanti.", fontSize = 10.sp, color = Color(0xFF795548))
+                                            }
                                         }
                                     }
-                                }
 
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // Sisa Piutang Summary Card
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF9A9A))
-                                ) {
-                                    Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Total Tagihan Transaksi:", fontSize = 11.sp, color = Color.Gray)
-                                            Text(formatRupiah(grandTotal), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                        }
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Uang Muka (DP Tunai):", fontSize = 11.sp, color = Color.Gray)
-                                            Text(formatRupiah(numericPiutangDp), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = RetailGreen)
-                                        }
-                                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color(0xFFEF9A9A))
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                            Text("SISA PIUTANG (HUTANG):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
-                                            Text(formatRupiah(sisaPiutang), fontSize = 16.sp, fontWeight = FontWeight.Black, color = Color(0xFFC62828))
+                                    if (memberRemainingPiutang > 0.0) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2)),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFCA5A5))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(20.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Column {
+                                                    Text("PERINGATAN SISA PIUTANG MEMBER", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFFDC2626))
+                                                    Text("Member ini masih memiliki tanggungan hutang belum lunas sebesar ${formatRupiah(memberRemainingPiutang)}.", fontSize = 10.sp, color = Color(0xFF991B1B))
+                                                }
+                                            }
                                         }
                                     }
-                                }
 
-                                Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
 
-                                // 3. Jatuh Tempo & Catatan
-                                Text("3. Jatuh Tempo & Catatan:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    listOf(7, 14, 30).forEach { days ->
-                                        val cal = java.util.Calendar.getInstance()
-                                        cal.add(java.util.Calendar.DAY_OF_YEAR, days)
-                                        val dt = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(cal.time)
-                                        FilterChip(
-                                            selected = piutangDueDate == dt,
-                                            onClick = { piutangDueDate = dt },
-                                            label = { Text("+$days Hari ($dt)", fontSize = 10.sp) }
+                                    // 1. Debitur Info
+                                    Text("1. Data Debitur / Pelanggan Member *", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    OutlinedTextField(
+                                        value = piutangCustomerName,
+                                        onValueChange = { piutangCustomerName = it },
+                                        modifier = Modifier.fillMaxWidth().testTag("piutang_customer_name"),
+                                        label = { Text("Nama Member / Debitur *") },
+                                        placeholder = { Text("Nama Member") },
+                                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = RetailNavy) },
+                                        singleLine = true,
+                                        colors = retailTextFieldColors()
+                                    )
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        OutlinedTextField(
+                                            value = piutangCustomerPhone,
+                                            onValueChange = { piutangCustomerPhone = it },
+                                            modifier = Modifier.weight(1f).testTag("piutang_customer_phone"),
+                                            label = { Text("No. HP / WA") },
+                                            placeholder = { Text("08xxxxxxxx") },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                                            singleLine = true,
+                                            colors = retailTextFieldColors()
+                                        )
+                                        OutlinedTextField(
+                                            value = piutangCustomerAddress,
+                                            onValueChange = { piutangCustomerAddress = it },
+                                            modifier = Modifier.weight(1f).testTag("piutang_customer_address"),
+                                            label = { Text("Alamat / Lokasi") },
+                                            placeholder = { Text("RT/RW / Blok") },
+                                            singleLine = true,
+                                            colors = retailTextFieldColors()
                                         )
                                     }
-                                }
 
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // 2. Uang Muka DP
+                                    Text("2. Uang Muka / Pembayaran Awal (DP Tunai):", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
+                                    Spacer(modifier = Modifier.height(4.dp))
                                     OutlinedTextField(
-                                        value = piutangDueDate,
-                                        onValueChange = { piutangDueDate = it },
-                                        modifier = Modifier.weight(1f).testTag("piutang_due_date"),
-                                        label = { Text("Tgl Jatuh Tempo") },
+                                        value = piutangDpInput,
+                                        onValueChange = { piutangDpInput = it },
+                                        modifier = Modifier.fillMaxWidth().testTag("piutang_dp_input"),
+                                        label = { Text("Uang Muka / DP (Rp)") },
+                                        placeholder = { Text("Ketik 0 jika tanpa DP...") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         singleLine = true,
                                         colors = retailTextFieldColors()
                                     )
-                                    OutlinedTextField(
-                                        value = piutangNotes,
-                                        onValueChange = { piutangNotes = it },
-                                        modifier = Modifier.weight(1.2f).testTag("piutang_notes"),
-                                        label = { Text("Catatan Piutang") },
-                                        placeholder = { Text("Kasbon / Titip") },
-                                        singleLine = true,
-                                        colors = retailTextFieldColors()
-                                    )
+
+                                    // DP Quick Buttons
+                                    Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        listOf(0.0, 20000.0, 50000.0, 100000.0).forEach { dpAmt ->
+                                            OutlinedButton(
+                                                onClick = { piutangDpInput = if (dpAmt == 0.0) "0" else dpAmt.toLong().toString() },
+                                                modifier = Modifier.weight(1f),
+                                                contentPadding = PaddingValues(2.dp)
+                                            ) {
+                                                Text(if (dpAmt == 0.0) "Tanpa DP" else formatRupiah(dpAmt), fontSize = 10.sp, color = Color.Black)
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Sisa Piutang Summary Card
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth().testTag("piutang_summary_card"),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF9A9A))
+                                    ) {
+                                        Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                Text("Total Tagihan Transaksi:", fontSize = 11.sp, color = Color.Gray)
+                                                Text(formatRupiah(grandTotal), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                            }
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                Text("Uang Muka (DP Tunai):", fontSize = 11.sp, color = Color.Gray)
+                                                Text(formatRupiah(numericPiutangDp), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = RetailGreen)
+                                            }
+                                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color(0xFFEF9A9A))
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                Text("SISA PIUTANG BON INI:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
+                                                Text(formatRupiah(sisaPiutang), fontSize = 14.sp, fontWeight = FontWeight.Black, color = Color(0xFFC62828))
+                                            }
+                                            if (memberRemainingPiutang > 0.0) {
+                                                Row(modifier = Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                    Text("Sisa Piutang Lama Member:", fontSize = 11.sp, color = Color(0xFFB91C1C), fontWeight = FontWeight.Medium)
+                                                    Text(formatRupiah(memberRemainingPiutang), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB91C1C))
+                                                }
+                                                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color(0xFFEF9A9A))
+                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                    Text("TOTAL AKUMULASI HUTANG:", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF7F1D1D))
+                                                    Text(formatRupiah(memberRemainingPiutang + sisaPiutang), fontSize = 15.sp, fontWeight = FontWeight.Black, color = Color(0xFF7F1D1D))
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // 3. Jatuh Tempo & Catatan
+                                    Text("3. Jatuh Tempo & Catatan:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        listOf(7, 14, 30).forEach { days ->
+                                            val cal = java.util.Calendar.getInstance()
+                                            cal.add(java.util.Calendar.DAY_OF_YEAR, days)
+                                            val dt = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(cal.time)
+                                            FilterChip(
+                                                selected = piutangDueDate == dt,
+                                                onClick = { piutangDueDate = dt },
+                                                label = { Text("+$days Hari ($dt)", fontSize = 10.sp) }
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        OutlinedTextField(
+                                            value = piutangDueDate,
+                                            onValueChange = { piutangDueDate = it },
+                                            modifier = Modifier.weight(1f).testTag("piutang_due_date"),
+                                            label = { Text("Tgl Jatuh Tempo") },
+                                            singleLine = true,
+                                            colors = retailTextFieldColors()
+                                        )
+                                        OutlinedTextField(
+                                            value = piutangNotes,
+                                            onValueChange = { piutangNotes = it },
+                                            modifier = Modifier.weight(1.2f).testTag("piutang_notes"),
+                                            label = { Text("Catatan Piutang") },
+                                            placeholder = { Text("Kasbon / Titip") },
+                                            singleLine = true,
+                                            colors = retailTextFieldColors()
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1741,7 +2342,7 @@ fun PaymentDialog(
                                     if (numericCash < grandTotal) {
                                         errorMessage = "Uang tunai kurang dari tagihan!"
                                     } else {
-                                        onProcessPayment("TUNAI", numericCash, 0.0, "TUNAI")
+                                        onProcessPayment("TUNAI", numericCash, 0.0, "TUNAI", "", "", "", "", "")
                                     }
                                 }
                                 "QRIS" -> {
@@ -1749,23 +2350,50 @@ fun PaymentDialog(
                                         "QRIS",
                                         0.0,
                                         grandTotal,
-                                        "QRIS NMID:${storeConfig.qrisNmid.ifBlank { "ID1020030040050" }} ${if (walletPhone.isNotBlank()) "Ref:$walletPhone" else ""}".trim()
+                                        "QRIS NMID:${storeConfig.qrisNmid.ifBlank { "ID1020030040050" }} ${if (walletPhone.isNotBlank()) "Ref:$walletPhone" else ""}".trim(),
+                                        "", "", "", "", ""
                                     )
                                 }
                                 "CAMPURAN" -> {
-                                    if ((numericCash + numericNonCash) < grandTotal) {
-                                        errorMessage = "Total pembayaran campuran kurang dari tagihan!"
+                                    val numericSplitPiutang = campuranPiutangInput.toDoubleOrNull() ?: 0.0
+                                    val totalSplit = numericCash + numericNonCash + numericSplitPiutang
+                                    if (numericSplitPiutang > 0.0 && currentMember == null) {
+                                        errorMessage = "Pembayaran porsi Piutang pada transaksi Campuran TIDAK DIIZINKAN untuk non-member! Silakan pilih Member terlebih dahulu."
+                                    } else if (totalSplit < grandTotal) {
+                                        errorMessage = "Total pembayaran campuran (${formatRupiah(totalSplit)}) kurang dari tagihan (${formatRupiah(grandTotal)})! Masih ada sisa kekurangan ${formatRupiah(grandTotal - totalSplit)}."
+                                    } else if (numericSplitPiutang > 0.0 && piutangCustomerName.isBlank()) {
+                                        errorMessage = "Nama debitur / pelanggan wajib diisi untuk porsi pembayaran Piutang!"
                                     } else {
-                                        onProcessPayment("CAMPURAN", numericCash, numericNonCash, "CAMPURAN: Tunai + $selectedCardBank")
+                                        val pParts = mutableListOf<String>()
+                                        if (numericCash > 0.0) pParts.add("Tunai ${formatRupiah(numericCash)}")
+                                        if (numericNonCash > 0.0) pParts.add("$selectedCardBank ${formatRupiah(numericNonCash)}")
+                                        if (numericSplitPiutang > 0.0) pParts.add("Piutang ${formatRupiah(numericSplitPiutang)} ($piutangCustomerName)")
+                                        val ref = "CAMPURAN: " + pParts.joinToString(" + ")
+
+                                        onProcessPayment(
+                                            "CAMPURAN",
+                                            numericCash,
+                                            numericNonCash,
+                                            ref,
+                                            if (numericSplitPiutang > 0.0) piutangCustomerName.trim() else "",
+                                            if (numericSplitPiutang > 0.0) piutangCustomerPhone.trim() else "",
+                                            if (numericSplitPiutang > 0.0) piutangCustomerAddress.trim() else "",
+                                            if (numericSplitPiutang > 0.0) piutangDueDate.trim() else "",
+                                            if (numericSplitPiutang > 0.0) (if (piutangNotes.isNotBlank()) piutangNotes.trim() else "Pembayaran Campuran") else ""
+                                        )
                                     }
                                 }
                                 "WALLET" -> {
-                                    onProcessPayment("WALLET", 0.0, grandTotal, "$selectedWallet - $walletPhone")
+                                    onProcessPayment("WALLET", 0.0, grandTotal, "$selectedWallet - $walletPhone", "", "", "", "", "")
                                 }
                                 "CARD" -> {
-                                    onProcessPayment("CARD", 0.0, grandTotal, "EDC $selectedCardBank #$cardApprovalCode")
+                                    onProcessPayment("CARD", 0.0, grandTotal, "EDC $selectedCardBank #$cardApprovalCode", "", "", "", "", "")
                                 }
                                 "PIUTANG" -> {
+                                    if (currentMember == null) {
+                                        errorMessage = "Pembayaran Piutang TIDAK DIIZINKAN untuk pelanggan non-member! Silakan pilih Member terlebih dahulu."
+                                        return@Button
+                                    }
                                     val numericPiutangDp = piutangDpInput.toDoubleOrNull() ?: 0.0
                                     if (piutangCustomerName.isBlank()) {
                                         errorMessage = "Nama debitur / pelanggan piutang wajib diisi!"
@@ -1783,16 +2411,26 @@ fun PaymentDialog(
                                             )
                                         } else {
                                             val ref = "PIUTANG: ${piutangCustomerName.trim()}${if (piutangDueDate.isNotBlank()) " (Jatuh Tempo: ${piutangDueDate.trim()})" else ""}".trim()
-                                            onProcessPayment("PIUTANG", numericPiutangDp, 0.0, ref)
+                                            onProcessPayment(
+                                                "PIUTANG",
+                                                numericPiutangDp,
+                                                0.0,
+                                                ref,
+                                                piutangCustomerName.trim(),
+                                                piutangCustomerPhone.trim(),
+                                                piutangCustomerAddress.trim(),
+                                                piutangDueDate.trim(),
+                                                piutangNotes.trim()
+                                            )
                                         }
                                     }
                                 }
                             }
                         },
-                        enabled = grandTotal > 0.0,
+                        enabled = grandTotal > 0.0 && !(selectedMethod == "PIUTANG" && currentMember == null),
                         modifier = Modifier.weight(1.5f).testTag("payment_proses_button"),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (grandTotal > 0.0) RetailRedPrimary else Color.LightGray,
+                            containerColor = if (grandTotal > 0.0 && !(selectedMethod == "PIUTANG" && currentMember == null)) RetailRedPrimary else Color.LightGray,
                             contentColor = Color.White
                         )
                     ) {
@@ -1814,6 +2452,7 @@ fun ReceiptDialog(
     transaction: TransactionEntity,
     items: List<CartItem>,
     storeConfig: StoreConfigEntity,
+    memberRemainingPiutang: Double = 0.0,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -1821,8 +2460,31 @@ fun ReceiptDialog(
     var saveStatusMsg by remember { mutableStateOf("") }
     var isPrinting by remember { mutableStateOf(false) }
 
+    var resolvedMemberDebt by remember(transaction.bonNo, memberRemainingPiutang) {
+        mutableDoubleStateOf(memberRemainingPiutang)
+    }
+
     var resolvedItems by remember(transaction.bonNo, items) {
         mutableStateOf(items)
+    }
+
+    LaunchedEffect(transaction.memberNo, transaction.bonNo) {
+        if (resolvedMemberDebt == 0.0 && transaction.memberNo.isNotBlank()) {
+            try {
+                val db = com.example.data.local.AppDatabase.getInstance(context)
+                val recs = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    db.posDao().getAllReceivablesList()
+                }
+                val debt = recs.filter { r ->
+                    !r.status.equals("LUNAS", ignoreCase = true) &&
+                    r.bonNo != transaction.bonNo &&
+                    (r.memberNo == transaction.memberNo || (r.customerPhone.isNotBlank() && r.customerPhone == transaction.memberNo))
+                }.sumOf { it.remainingAmount }
+                if (debt > 0.0) {
+                    resolvedMemberDebt = debt
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     LaunchedEffect(transaction.bonNo, items) {
@@ -1856,8 +2518,8 @@ fun ReceiptDialog(
         }
     }
 
-    val receiptText = remember(transaction, resolvedItems, storeConfig) {
-        com.example.util.ReceiptFormatter.formatReceipt(transaction, resolvedItems, storeConfig)
+    val receiptText = remember(transaction, resolvedItems, storeConfig, resolvedMemberDebt) {
+        com.example.util.ReceiptFormatter.formatReceipt(transaction, resolvedItems, storeConfig, resolvedMemberDebt)
     }
 
     // Auto-print on dialog open or when items are loaded if enabled

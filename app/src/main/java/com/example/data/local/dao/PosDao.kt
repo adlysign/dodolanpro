@@ -95,6 +95,25 @@ interface PosDao {
     @Query("UPDATE members SET poin = :points WHERE memberNo = :memberNo")
     suspend fun setMemberPoints(memberNo: String, points: Int)
 
+    // Member Point Logs
+    @Query("SELECT * FROM member_point_logs ORDER BY timestamp DESC")
+    fun getAllPointLogs(): Flow<List<MemberPointLogEntity>>
+
+    @Query("SELECT * FROM member_point_logs WHERE memberNo = :memberNo ORDER BY timestamp DESC")
+    fun getPointLogsByMember(memberNo: String): Flow<List<MemberPointLogEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPointLog(log: MemberPointLogEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPointLogs(logs: List<MemberPointLogEntity>)
+
+    @Query("DELETE FROM member_point_logs WHERE memberNo = :memberNo")
+    suspend fun deletePointLogsByMember(memberNo: String)
+
+    @Query("SELECT COUNT(*) FROM member_point_logs")
+    suspend fun getPointLogsCount(): Int
+
     // Shift Configs
     @Query("SELECT * FROM shift_configs ORDER BY shiftNumber ASC")
     fun getAllShiftConfigs(): Flow<List<ShiftConfigEntity>>

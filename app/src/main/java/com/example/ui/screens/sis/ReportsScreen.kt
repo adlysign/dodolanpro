@@ -117,12 +117,8 @@ fun ReportsScreen(
         }
     }
 
-    val totalDonasi = remember(filteredTransactions) {
-        filteredTransactions.sumOf { it.donasi }
-    }
-
-    val labaKotor = remember(totalOmset, totalHpp, totalDonasi) {
-        maxOf(0.0, (totalOmset - totalDonasi) - totalHpp)
+    val labaKotor = remember(totalOmset, totalHpp) {
+        maxOf(0.0, totalOmset - totalHpp)
     }
 
     val marginPersen = remember(totalOmset, labaKotor) {
@@ -162,8 +158,7 @@ fun ReportsScreen(
             val dayHpp = dayItems.sumOf { itm ->
                 (productMap[itm.plu]?.hargaBeli ?: (itm.hargaJual * 0.75)) * itm.qty
             }
-            val dayDonasi = txs.sumOf { it.donasi }
-            val dayProfit = maxOf(0.0, (dayOmset - dayDonasi) - dayHpp)
+            val dayProfit = maxOf(0.0, dayOmset - dayHpp)
 
             points.add(
                 DailySalesTrend(
@@ -659,7 +654,7 @@ fun ReportsScreen(
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Text(
-                                        "Analisis Poin Member, Voucher & Donasi",
+                                        "Analisis Potongan Diskon, Voucher & Poin",
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFF0D47A1)
@@ -671,6 +666,12 @@ fun ReportsScreen(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
+                                        Column {
+                                            Text("Potongan Diskon Promo", fontSize = 11.sp, color = Color.Gray)
+                                            val potDiskon = filteredTransactions.sumOf { it.diskonTotal }
+                                            Text(formatRupiah(potDiskon), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RetailRedPrimary)
+                                        }
+
                                         Column {
                                             Text("Potongan Voucher Toko", fontSize = 11.sp, color = Color.Gray)
                                             val potVoucher = filteredTransactions.sumOf { it.nilaiPotonganVoucher }
@@ -684,8 +685,9 @@ fun ReportsScreen(
                                         }
 
                                         Column(horizontalAlignment = Alignment.End) {
-                                            Text("Donasi Terkumpul", fontSize = 11.sp, color = Color.Gray)
-                                            Text(formatRupiah(totalDonasi), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                                            Text("Total Hemat Pelanggan", fontSize = 11.sp, color = Color.Gray)
+                                            val totalHemat = filteredTransactions.sumOf { it.diskonTotal + it.nilaiPotonganVoucher + it.nilaiPotonganPoin }
+                                            Text(formatRupiah(totalHemat), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
                                         }
                                     }
                                 }
@@ -1011,8 +1013,7 @@ fun generateStorePerformanceText(
     val totalOmset = transactions.sumOf { it.grandTotal }
     val productMap = products.associateBy { it.plu }
     val totalHpp = items.sumOf { (productMap[it.plu]?.hargaBeli ?: (it.hargaJual * 0.75)) * it.qty }
-    val totalDonasi = transactions.sumOf { it.donasi }
-    val labaKotor = maxOf(0.0, (totalOmset - totalDonasi) - totalHpp)
+    val labaKotor = maxOf(0.0, totalOmset - totalHpp)
     val marginPersen = if (totalOmset > 0) (labaKotor / totalOmset) * 100 else 0.0
     val totalBon = transactions.size
     val atv = if (totalBon > 0) totalOmset / totalBon else 0.0
@@ -1035,7 +1036,6 @@ fun generateStorePerformanceText(
         appendLine("Basket Size (ATV): ${formatRupiah(atv)} / Bon")
         appendLine("Item Terjual     : ${items.sumOf { it.qty }} Pcs")
         appendLine("Diskon / Promo   : ${formatRupiah(transactions.sumOf { it.diskonTotal + it.nilaiPotonganVoucher + it.nilaiPotonganPoin })}")
-        appendLine("Donasi Pelanggan : ${formatRupiah(totalDonasi)}")
         appendLine("------------------------------------------")
         appendLine("METODE PEMBAYARAN:")
         val groupedPayment = transactions.groupBy { it.caraBayar.uppercase() }

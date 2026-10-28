@@ -142,6 +142,22 @@ class PosRepository(private val dao: PosDao) {
 
     suspend fun saveMember(member: MemberEntity) = withContext(Dispatchers.IO) {
         dao.insertMember(member)
+        if (member.poin > 0) {
+            val logDate = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+            dao.insertPointLog(
+                MemberPointLogEntity(
+                    memberNo = member.memberNo,
+                    memberNama = member.nama,
+                    type = "BONUS",
+                    pointsDelta = member.poin,
+                    balanceAfter = member.poin,
+                    referenceNo = "REG-" + member.memberNo,
+                    note = "Bonus pendaftaran member baru",
+                    tanggal = logDate,
+                    timestamp = System.currentTimeMillis()
+                )
+            )
+        }
     }
 
     suspend fun updateMember(member: MemberEntity) = withContext(Dispatchers.IO) {
@@ -162,6 +178,18 @@ class PosRepository(private val dao: PosDao) {
 
     suspend fun setMemberPoints(memberNo: String, points: Int) = withContext(Dispatchers.IO) {
         dao.setMemberPoints(memberNo, points)
+    }
+
+    val allPointLogs: Flow<List<MemberPointLogEntity>> = dao.getAllPointLogs()
+
+    fun getPointLogsByMember(memberNo: String): Flow<List<MemberPointLogEntity>> = dao.getPointLogsByMember(memberNo)
+
+    suspend fun insertPointLog(log: MemberPointLogEntity) = withContext(Dispatchers.IO) {
+        dao.insertPointLog(log)
+    }
+
+    suspend fun deletePointLogsByMember(memberNo: String) = withContext(Dispatchers.IO) {
+        dao.deletePointLogsByMember(memberNo)
     }
 
     suspend fun saveShiftConfig(shift: ShiftConfigEntity) = withContext(Dispatchers.IO) {
@@ -255,10 +283,16 @@ class PosRepository(private val dao: PosDao) {
             dao.insertTransaction(tx)
             dao.insertTransactionItems(items)
 
-            // Jika cara bayar adalah PIUTANG, catat piutang debitur di tabel receivables
-            if (caraBayar.equals("PIUTANG", ignoreCase = true)) {
-                val sisa = (grandTotal - bayarTunai).coerceAtLeast(0.0)
-                val status = if (sisa <= 0.0) "LUNAS" else if (bayarTunai > 0.0) "SEBAGIAN" else "BELUM_LUNAS"
+            // Jika cara bayar adalah PIUTANG atau pembayaran CAMPURAN yang memiliki porsi piutang
+            val isPiutang = caraBayar.equals("PIUTANG", ignoreCase = true)
+            val isCampuranPiutang = caraBayar.equals("CAMPURAN", ignoreCase = true) &&
+                    piutangCustomerName.isNotBlank() &&
+                    (grandTotal - (bayarTunai + bayarNonTunai)) > 0.0
+
+            if (isPiutang || isCampuranPiutang) {
+                val directPaid = (bayarTunai + bayarNonTunai).coerceAtMost(grandTotal)
+                val sisa = (grandTotal - directPaid).coerceAtLeast(0.0)
+                val status = if (sisa <= 0.0) "LUNAS" else if (directPaid > 0.0) "SEBAGIAN" else "BELUM_LUNAS"
                 val todayStr = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date())
                 val rec = ReceivableEntity(
                     bonNo = bonNo,
@@ -267,25 +301,26 @@ class PosRepository(private val dao: PosDao) {
                     customerAddress = piutangCustomerAddress,
                     memberNo = memberNo,
                     totalAmount = grandTotal,
-                    paidAmount = bayarTunai,
+                    paidAmount = directPaid,
                     remainingAmount = sisa,
                     status = status,
                     tanggal = todayStr,
                     dueDate = piutangDueDate.ifBlank { todayStr },
-                    notes = piutangNotes,
+                    notes = if (piutangNotes.isNotBlank()) piutangNotes else (if (isCampuranPiutang) "Pembayaran Campuran" else ""),
                     kasirNik = kasirNik,
                     kasirNama = kasirNama
                 )
                 val recId = dao.insertReceivable(rec)
-                if (bayarTunai > 0.0) {
+                if (directPaid > 0.0) {
+                    val pMethod = if (bayarTunai > 0.0 && bayarNonTunai > 0.0) "CAMPURAN" else if (bayarTunai > 0.0) "TUNAI" else "NON_TUNAI"
                     dao.insertReceivablePayment(
                         ReceivablePaymentEntity(
                             receivableId = recId,
                             bonNo = bonNo,
-                            paymentAmount = bayarTunai,
-                            paymentMethod = "TUNAI",
+                            paymentAmount = directPaid,
+                            paymentMethod = pMethod,
                             paymentDate = todayStr,
-                            notes = "Uang Muka (DP) Transaksi Kasir",
+                            notes = "Uang Muka / Pembayaran Awal Transaksi Kasir ($refPembayaran)",
                             kasirNama = kasirNama,
                             timestamp = System.currentTimeMillis()
                         )
@@ -306,8 +341,27 @@ class PosRepository(private val dao: PosDao) {
             // Member points reward & deduction
             val storeConfig = dao.getStoreConfigOnce() ?: StoreConfigEntity()
             if (memberNo.isNotBlank() && storeConfig.poinAktif) {
+                val memberObj = dao.getMemberByKey(memberNo)
+                var currentPoin = memberObj?.poin ?: 0
+                val memberNama = memberObj?.nama ?: memberNo
+                val logDate = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+
                 if (poinDigunakan > 0) {
                     dao.deductMemberPoints(memberNo, poinDigunakan)
+                    currentPoin = (currentPoin - poinDigunakan).coerceAtLeast(0)
+                    dao.insertPointLog(
+                        MemberPointLogEntity(
+                            memberNo = memberNo,
+                            memberNama = memberNama,
+                            type = "REDEEM",
+                            pointsDelta = -poinDigunakan,
+                            balanceAfter = currentPoin,
+                            referenceNo = bonNo,
+                            note = "Tukar $poinDigunakan poin untuk potongan belanja pada Bon $bonNo",
+                            tanggal = logDate,
+                            timestamp = System.currentTimeMillis()
+                        )
+                    )
                 }
                 // Earn points based on store config belanjaPerPoin rule
                 if (poinDigunakan == 0 || storeConfig.poinDapatSaatRedeem) {
@@ -315,6 +369,20 @@ class PosRepository(private val dao: PosDao) {
                     val earnedPoints = (grandTotal / belanjaRule).toInt()
                     if (earnedPoints > 0) {
                         dao.addMemberPoints(memberNo, earnedPoints)
+                        currentPoin += earnedPoints
+                        dao.insertPointLog(
+                            MemberPointLogEntity(
+                                memberNo = memberNo,
+                                memberNama = memberNama,
+                                type = "EARN",
+                                pointsDelta = earnedPoints,
+                                balanceAfter = currentPoin,
+                                referenceNo = bonNo,
+                                note = "Poin diperoleh dari transaksi belanja Bon $bonNo",
+                                tanggal = logDate,
+                                timestamp = System.currentTimeMillis() + 5
+                            )
+                        )
                     }
                 }
             }
@@ -341,11 +409,11 @@ class PosRepository(private val dao: PosDao) {
                 "TUNAI" -> {
                     val netCash = (tx.bayarTunai - tx.kembalian).coerceAtLeast(0.0)
                     val cashSales = if (netCash > 0.0) netCash else tx.grandTotal
-                    totalTunai += (cashSales - tx.donasi).coerceAtLeast(0.0)
+                    totalTunai += cashSales
                 }
                 "CAMPURAN" -> {
                     val netCashPortion = (tx.bayarTunai - tx.kembalian).coerceAtLeast(0.0)
-                    totalTunai += (netCashPortion - tx.donasi).coerceAtLeast(0.0)
+                    totalTunai += netCashPortion
                     val nonCashPortion = if (tx.bayarNonTunai > 0.0) tx.bayarNonTunai else (tx.grandTotal - netCashPortion).coerceAtLeast(0.0)
                     totalNonTunai += nonCashPortion
                 }
@@ -359,11 +427,10 @@ class PosRepository(private val dao: PosDao) {
                     totalNonTunai += tx.grandTotal
                 }
             }
-            totalDonasi += tx.donasi
         }
 
         val totalPenjualan = totalTunai + totalNonTunai
-        val uangSeharusnya = modalKasir + totalTunai + totalDonasi
+        val uangSeharusnya = modalKasir + totalTunai
         val selisih = uangSetoranFisik - uangSeharusnya
         val status = when {
             selisih > 0 -> "LEBIH"
@@ -839,8 +906,8 @@ class PosRepository(private val dao: PosDao) {
                     )
                 }
 
-                val donasi = if (payment == "TUNAI" && (i % 2 == 0)) 500.0 else 0.0
-                val grandTotal = (subtotal - diskonTotal) + donasi
+                val donasi = 0.0
+                val grandTotal = subtotal - diskonTotal
                 val bayarTunai = if (payment == "TUNAI") ((grandTotal / 10000).toInt() + 1) * 10000.0 else 0.0
                 val bayarNonTunai = if (payment != "TUNAI") grandTotal else 0.0
                 val kembalian = if (payment == "TUNAI") maxOf(0.0, bayarTunai - grandTotal) else 0.0
