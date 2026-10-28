@@ -644,11 +644,27 @@ fun MultiDeviceSyncScreen(
                                                     fontSize = 10.sp,
                                                     color = DarkText
                                                 )
-                                                Text(
-                                                    "Terakhir aktif: ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(peer.lastSeenTimestamp))}",
-                                                    fontSize = 9.sp,
-                                                    color = GrayText
-                                                )
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(3.dp),
+                                                        color = if (peer.hasClerek) RetailGreenLight else Color(0xFFFFF3E0),
+                                                        modifier = Modifier.padding(top = 2.dp)
+                                                    ) {
+                                                        Text(
+                                                            if (peer.hasClerek) "CLEREK SELESAI" else (if (peer.isShiftOpen) "SHIFT AKTIF" else "BELUM CLEREK"),
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (peer.hasClerek) RetailGreen else Color(0xFFE65100),
+                                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        "Aktif: ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(peer.lastSeenTimestamp))}",
+                                                        fontSize = 9.sp,
+                                                        color = GrayText
+                                                    )
+                                                }
                                             }
 
                                             // Pending status indicator
@@ -681,6 +697,22 @@ fun MultiDeviceSyncScreen(
                                             }
                                         }
                                     }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.reconcileAllClerek { rem ->
+                                            isSuccessAction = true
+                                            actionMessage = "Rekonsiliasi status clerek berhasil! Sisa transaksi belum clerek: $rem"
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth().testTag("btn_reconcile_all_clerek_sync")
+                                ) {
+                                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("SINKRONKAN & REKONSILIASI CLEREK SEMUA KASIR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

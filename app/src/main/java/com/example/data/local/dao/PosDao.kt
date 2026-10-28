@@ -161,6 +161,15 @@ interface PosDao {
     @Query("UPDATE transactions SET isClerek = 1 WHERE kasirNik = :nik AND isClerek = 0")
     suspend fun markTransactionsClerek(nik: String)
 
+    @Query("UPDATE transactions SET isClerek = 1 WHERE isClerek = 0")
+    suspend fun markAllTransactionsClerek()
+
+    @Query("SELECT DISTINCT kasirNik FROM transactions WHERE isClerek = 0")
+    suspend fun getUnclerekCashierNiks(): List<String>
+
+    @Query("SELECT COUNT(*) FROM transactions WHERE isClerek = 0")
+    suspend fun getUnclerekTransactionsCount(): Int
+
     // Transaction Items
     @Query("SELECT * FROM transaction_items WHERE bonNo = :bonNo")
     suspend fun getItemsForBon(bonNo: String): List<TransactionItemEntity>

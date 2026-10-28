@@ -126,3 +126,16 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
+
+tasks.matching { it.name == "assembleDebug" }.configureEach {
+    doLast {
+        val apkFile = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk").get().asFile
+        if (apkFile.exists()) {
+            apkFile.copyTo(file("${rootDir}/DodolanPro.apk"), overwrite = true)
+            val publicDir = file("${rootDir}/public")
+            if (publicDir.exists()) {
+                apkFile.copyTo(file("${rootDir}/public/DodolanPro.apk"), overwrite = true)
+            }
+        }
+    }
+}

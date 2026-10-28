@@ -459,6 +459,36 @@ class PosRepository(private val dao: PosDao) {
         record
     }
 
+    suspend fun saveSyncedClerek(clerek: ClerekEntity) = withContext(Dispatchers.IO) {
+        dao.insertClerek(clerek)
+        dao.markTransactionsClerek(clerek.kasirNik)
+    }
+
+    suspend fun markTransactionsClerekByNik(nik: String) = withContext(Dispatchers.IO) {
+        dao.markTransactionsClerek(nik)
+    }
+
+    suspend fun markAllTransactionsClerek() = withContext(Dispatchers.IO) {
+        dao.markAllTransactionsClerek()
+    }
+
+    suspend fun getUnclerekCashiersWithCount(): List<Pair<String, Int>> = withContext(Dispatchers.IO) {
+        val txs = dao.getAllTransactionsList().filter { !it.isClerek }
+        txs.groupBy { it.kasirNik }.map { (nik, list) ->
+            val name = list.firstOrNull()?.kasirNama?.ifBlank { nik } ?: nik
+            Pair("$name ($nik)", list.size)
+        }
+    }
+
+    suspend fun reconcileClerekStatus(): Int = withContext(Dispatchers.IO) {
+        val clerekList = dao.getAllClerekList()
+        val clerekNiks = clerekList.map { it.kasirNik }.toSet()
+        for (nik in clerekNiks) {
+            dao.markTransactionsClerek(nik)
+        }
+        dao.getUnclerekTransactionsCount()
+    }
+
     suspend fun recordPurchase(
         purchase: PurchaseEntity,
         items: List<PurchaseItemEntity>,

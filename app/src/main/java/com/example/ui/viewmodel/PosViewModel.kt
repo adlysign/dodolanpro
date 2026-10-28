@@ -296,10 +296,6 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         if (dest == PosNavDestination.CLEREK) {
             return cashier.canClerekKasir
         }
-        // Sinkronisasi Multi-Device tidak terkunci: Semua kasir/user dapat membuka & mengatur sinkronisasi
-        if (dest == PosNavDestination.SINKRONISASI_MULTI_DEVICE) {
-            return true
-        }
         // Seluruh menu SIS membutuhkan izin dasar canAccessSis
         if (!cashier.canAccessSis) return false
 
@@ -308,7 +304,8 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             PosNavDestination.SIS_DASHBOARD -> cashier.canAccessSis
             PosNavDestination.PRODUK -> cashier.canManageProduk
             PosNavDestination.CETAK_LABEL_HARGA -> cashier.canCetakLabelRak
-            PosNavDestination.PENJUALAN -> cashier.canViewLaporan || cashier.isAdmin()
+            PosNavDestination.PENJUALAN -> cashier.canViewPenjualan || cashier.canViewLaporan || cashier.isAdmin()
+            PosNavDestination.PIUTANG -> cashier.canManagePiutang || cashier.isAdmin()
             PosNavDestination.PEMBELIAN -> cashier.canManagePembelian
             PosNavDestination.RETUR_PEMBELIAN -> cashier.canReturPembelian
             PosNavDestination.STOK_OPNAME -> cashier.canStockOpname
@@ -319,20 +316,15 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
             PosNavDestination.VOUCHER_POIN -> cashier.canManageVoucher
             PosNavDestination.KARYAWAN -> cashier.canManageKaryawan
             PosNavDestination.PENGATURAN_SHIFT -> cashier.canManageShift
-            PosNavDestination.PENGATURAN_PRINTER -> cashier.canManageSettings
-            PosNavDestination.EDIT_TOKO -> cashier.canManageSettings
+            PosNavDestination.PENGATURAN_PRINTER -> cashier.canManagePrinter || cashier.canManageSettings
+            PosNavDestination.EDIT_TOKO -> cashier.canManageProfilToko || cashier.canManageSettings
             PosNavDestination.BACKUP_RESTORE -> cashier.canBackupRestore
-            PosNavDestination.SINKRONISASI_MULTI_DEVICE -> true
-            PosNavDestination.PIUTANG -> cashier.canAccessSis || cashier.isAdmin() || cashier.canViewLaporan
+            PosNavDestination.SINKRONISASI_MULTI_DEVICE -> cashier.canManageSync || cashier.isAdmin()
         }
     }
 
     fun navigateTo(dest: PosNavDestination) {
         if (dest == PosNavDestination.KASIR) {
-            _currentDestination.value = dest
-            return
-        }
-        if (dest == PosNavDestination.SINKRONISASI_MULTI_DEVICE) {
             _currentDestination.value = dest
             return
         }
@@ -415,10 +407,12 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                     val localPending = _pendingCarts.value.size + (if (_cartItems.value.isNotEmpty()) 1 else 0)
                     val nik = _currentCashier.value?.nik ?: "001"
                     val name = _currentCashier.value?.nama ?: "Kasir"
+                    val isShift = _isShiftOpen.value
+                    val hasClerekDone = allClerekRecords.value.any { it.kasirNik == nik } || (!isShift && allClerekRecords.value.isNotEmpty())
                     if (cfg.role == com.example.data.sync.SyncRole.CLIENT) {
-                        syncManager.sendClientHeartbeat(localPending, nik, name)
+                        syncManager.sendClientHeartbeat(localPending, nik, name, isShiftOpen = isShift, hasClerek = hasClerekDone)
                     } else if (cfg.role == com.example.data.sync.SyncRole.SERVER) {
-                        syncManager.registerLocalDeviceAsServer(nik, name, localPending)
+                        syncManager.registerLocalDeviceAsServer(nik, name, localPending, isShiftOpen = isShift, hasClerek = hasClerekDone)
                     }
                 } catch (_: Exception) {}
             }
@@ -2068,6 +2062,11 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
 
     fun checkMultiDeviceEodPending(onResult: (com.example.data.sync.EodPendingCheckResult) -> Unit) {
         viewModelScope.launch {
+            // Rekonsiliasi otomatis clerek jika ada kasir yang sudah clerek di perangkat server/klien
+            try {
+                repository.reconcileClerekStatus()
+            } catch (_: Exception) {}
+
             val localPending = _pendingCarts.value.size + (if (_cartItems.value.isNotEmpty()) 1 else 0)
             val nik = _currentCashier.value?.nik ?: "001"
             val name = _currentCashier.value?.nama ?: "Kasir"
@@ -2262,6 +2261,14 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
                 .putBoolean("is_shift_open", false)
                 .apply()
             clearCart()
+
+            // Push clerek ke server jika perangkat berperan sebagai KLIEN
+            try {
+                syncManager.pushClerekToServer(record)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
             onComplete(record)
         }
     }
@@ -2280,6 +2287,31 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         onComplete: (ClerekEntity) -> Unit = {}
     ) {
         submitClerek(entity.uangSetoranFisik, onComplete)
+    }
+
+    fun reconcileAllClerek(onDone: ((Int) -> Unit)? = null) {
+        viewModelScope.launch {
+            val remaining = repository.reconcileClerekStatus()
+            onDone?.invoke(remaining)
+        }
+    }
+
+    fun markAllTransactionsAsClerek(onDone: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            repository.markAllTransactionsClerek()
+            onDone?.invoke()
+        }
+    }
+
+    fun markCashierTransactionsAsClerek(kasirNik: String, onDone: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            repository.markTransactionsClerekByNik(kasirNik)
+            onDone?.invoke()
+        }
+    }
+
+    suspend fun getUnclerekCashiersWithCount(): List<Pair<String, Int>> {
+        return repository.getUnclerekCashiersWithCount()
     }
 
     // Shift management

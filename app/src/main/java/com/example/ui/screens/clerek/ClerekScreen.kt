@@ -53,6 +53,10 @@ fun ClerekScreen(
     var feedbackMessage by remember { mutableStateOf("") }
     var saveDocMessage by remember { mutableStateOf("") }
 
+    val allUnclerekTxs = remember(allTransactions) {
+        allTransactions.filter { !it.isClerek }
+    }
+
     val unclerekTx = remember(allTransactions, currentCashier) {
         allTransactions.filter { it.kasirNik == (currentCashier?.nik ?: "") && !it.isClerek }
     }
@@ -380,6 +384,49 @@ fun ClerekScreen(
                                             Icon(Icons.Default.ArrowBack, contentDescription = null, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text("KEMBALI KE KASIR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (allUnclerekTxs.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, RetailAmber),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(14.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.SyncProblem, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(20.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                "TRANSAKSI BELUM SELESAI CLEREK",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                color = Color(0xFFB45309)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            "Terdapat ${allUnclerekTxs.size} transaksi penjualan yang belum masuk sesi clerek (dari: ${allUnclerekTxs.map { it.kasirNama.ifBlank { it.kasirNik } }.distinct().joinToString()}). Ini mencakup transaksi yang disinkronkan dari perangkat kasir klien.",
+                                            fontSize = 11.sp,
+                                            color = DarkText
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Button(
+                                            onClick = {
+                                                viewModel.markAllTransactionsAsClerek {
+                                                    feedbackMessage = "Semua transaksi (${allUnclerekTxs.size} transaksi) berhasil ditandai selesai clerek!"
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = RetailGreen),
+                                            modifier = Modifier.fillMaxWidth().height(40.dp)
+                                        ) {
+                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("REKONSILIASI & TANDAI SELESAI CLEREK SEMUA", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                         }
                                     }
                                 }

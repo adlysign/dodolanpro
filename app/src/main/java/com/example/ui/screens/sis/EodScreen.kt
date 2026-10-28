@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -64,8 +65,12 @@ fun EodScreen(
     }
 
     val unclerekCount = remember(allTransactions) { allTransactions.count { !it.isClerek } }
+    val unclerekGrouped = remember(allTransactions) {
+        allTransactions.filter { !it.isClerek }.groupBy { it.kasirNama.ifBlank { it.kasirNik } }
+    }
     val hasClerekDone = remember(allClerek) { allClerek.isNotEmpty() }
     val isShiftClosed = !isShiftOpen
+    var reconcileMessage by remember { mutableStateOf("") }
 
     // Multi-Device & Kasir Pending Check
     val syncConfig by viewModel.syncConfig.collectAsState()
@@ -82,7 +87,9 @@ fun EodScreen(
     }
 
     LaunchedEffect(Unit) {
-        refreshPendingCheck()
+        viewModel.reconcileAllClerek {
+            refreshPendingCheck()
+        }
     }
 
     val hasPendingAcrossDevices = eodPendingCheck?.canProceed == false
@@ -196,6 +203,53 @@ fun EodScreen(
                             fontWeight = FontWeight.SemiBold,
                             color = if (hasClerekDone && unclerekCount == 0) RetailGreen else Color(0xFFC62828)
                         )
+                    }
+
+                    if (unclerekCount > 0) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFFFF8E1),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, RetailAmber.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth().padding(start = 24.dp, top = 2.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text(
+                                    "Detail Transaksi Belum Selesai Clerek di Server:",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB45309)
+                                )
+                                unclerekGrouped.forEach { (kasir, txList) ->
+                                    Text(
+                                        "• Kasir $kasir : ${txList.size} transaksi",
+                                        fontSize = 11.sp,
+                                        color = DarkText
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.markAllTransactionsAsClerek {
+                                                reconcileMessage = "Seluruh transaksi ($unclerekCount transaksi) berhasil disinkronkan & ditandai selesai clerek!"
+                                                refreshPendingCheck()
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = RetailGreen),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(30.dp).testTag("btn_reconcile_clerek_status")
+                                    ) {
+                                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(13.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Rekonsiliasi & Tandai Selesai Clerek", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))
@@ -343,7 +397,7 @@ fun EodScreen(
                             if (isShiftOpen) {
                                 "Shift kasir saat ini masih aktif dan belum di-clerek. Silakan buka menu Clerek kasir terlebih dahulu untuk mencetak dan menyimpan setoran shift."
                             } else if (unclerekCount > 0) {
-                                "Terdapat $unclerekCount transaksi yang belum dimasukkan ke dalam Clerek. Silakan selesaikan Clerek di menu Clerek Kasir."
+                                "Terdapat $unclerekCount transaksi penjualan (${unclerekGrouped.keys.joinToString()}) yang belum masuk rekonsiliasi Clerek di server ini. Jika kasir di perangkat client dan server sudah clerek, tekan tombol Rekonsiliasi Status Clerek di bawah ini untuk menyelesaikannya langsung."
                             } else {
                                 "EOD hanya bisa dilakukan ketika shift kasir sudah dibuka dan sudah dilakukan proses Clerek."
                             },
@@ -354,29 +408,63 @@ fun EodScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        Button(
-                            onClick = {
-                                if (isShiftOpen || unclerekCount > 0) {
-                                    viewModel.navigateTo(PosNavDestination.CLEREK)
-                                } else {
-                                    viewModel.navigateTo(PosNavDestination.KASIR)
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = RetailAmber, contentColor = Color.White),
-                            shape = RoundedCornerShape(6.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier.height(34.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(
-                                if (isShiftOpen || unclerekCount > 0) Icons.Default.PointOfSale else Icons.Default.Storefront,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            if (unclerekCount > 0) {
+                                Button(
+                                    onClick = {
+                                        viewModel.markAllTransactionsAsClerek {
+                                            reconcileMessage = "Status clerek berhasil direkonsiliasi!"
+                                            refreshPendingCheck()
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = RetailGreen, contentColor = Color.White),
+                                    shape = RoundedCornerShape(6.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                    modifier = Modifier.weight(1f).height(36.dp).testTag("btn_reconcile_eod_action")
+                                ) {
+                                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Rekonsiliasi Status Clerek", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (isShiftOpen || unclerekCount > 0) {
+                                        viewModel.navigateTo(PosNavDestination.CLEREK)
+                                    } else {
+                                        viewModel.navigateTo(PosNavDestination.KASIR)
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = RetailAmber, contentColor = Color.White),
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier.weight(1f).height(36.dp)
+                            ) {
+                                Icon(
+                                    if (isShiftOpen || unclerekCount > 0) Icons.Default.PointOfSale else Icons.Default.Storefront,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    if (isShiftOpen || unclerekCount > 0) "Buka Menu Clerek" else "Buka Shift di Kasir",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        if (reconcileMessage.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                if (isShiftOpen || unclerekCount > 0) "Buka Menu Clerek Sekarang" else "Buka Shift di Layar Kasir",
+                                reconcileMessage,
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                color = RetailGreen
                             )
                         }
                     }

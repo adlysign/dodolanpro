@@ -219,10 +219,32 @@ class ExampleRobolectricTest {
     assert(!vm.hasPermissionForDestination(com.example.ui.viewmodel.PosNavDestination.EDIT_TOKO))
     assert(!vm.hasPermissionForDestination(com.example.ui.viewmodel.PosNavDestination.BACKUP_RESTORE))
     assert(!vm.hasPermissionForDestination(com.example.ui.viewmodel.PosNavDestination.EOD_TUTUP_TOKO))
+    assert(!vm.hasPermissionForDestination(com.example.ui.viewmodel.PosNavDestination.PENJUALAN))
+    assert(!vm.hasPermissionForDestination(com.example.ui.viewmodel.PosNavDestination.PIUTANG))
+    assert(!vm.hasPermissionForDestination(com.example.ui.viewmodel.PosNavDestination.PENGATURAN_PRINTER))
+    assert(!vm.hasPermissionForDestination(com.example.ui.viewmodel.PosNavDestination.SINKRONISASI_MULTI_DEVICE))
 
     // Navigation to restricted destination should be blocked
     vm.navigateTo(com.example.ui.viewmodel.PosNavDestination.KARYAWAN)
     assert(vm.currentDestination.value != com.example.ui.viewmodel.PosNavDestination.KARYAWAN)
+    vm.navigateTo(com.example.ui.viewmodel.PosNavDestination.PIUTANG)
+    assert(vm.currentDestination.value != com.example.ui.viewmodel.PosNavDestination.PIUTANG)
+
+    // Grant piutang and penjualan specifically and verify
+    val grantedCashier = restrictedCashier.copy(canManagePiutang = true, canViewPenjualan = true)
+    vm.repository.saveCashier(grantedCashier)
+    var reloginDone = false
+    vm.loginCashier("KASIR01", "1234") { ok, _ -> reloginDone = ok }
+    for (i in 1..20) {
+      org.robolectric.shadows.ShadowLooper.idleMainLooper()
+      if (reloginDone) break
+      Thread.sleep(50)
+    }
+    assert(reloginDone)
+    assert(vm.hasPermissionForDestination(com.example.ui.viewmodel.PosNavDestination.PIUTANG))
+    assert(vm.hasPermissionForDestination(com.example.ui.viewmodel.PosNavDestination.PENJUALAN))
+    vm.navigateTo(com.example.ui.viewmodel.PosNavDestination.PIUTANG)
+    assertEquals(com.example.ui.viewmodel.PosNavDestination.PIUTANG, vm.currentDestination.value)
 
     // Now login as Owner
     var ownerLoginDone = false

@@ -389,8 +389,8 @@ private fun CashierListItemCard(
     }
 
     val activeCount = cashier.activePermissionsCount()
-    val totalCount = 23
-    val progress = activeCount.toFloat() / totalCount.toFloat()
+    val totalCount = 28
+    val progress = (activeCount.toFloat() / totalCount.toFloat()).coerceIn(0f, 1f)
 
     Card(
         modifier = Modifier
@@ -554,11 +554,23 @@ private fun CashierListItemCard(
                 if (cashier.canBukaLaciUang) item { PermissionTag("Buka Drawer", Color(0xFF5D4037)) }
                 if (cashier.canClerekKasir) item { PermissionTag("Clerek Setoran", RetailNavy) }
                 if (cashier.canAccessSis) item { PermissionTag("Akses SIS", Color(0xFF00796B)) }
-                if (cashier.canManageProduk) item { PermissionTag("Katalog Produk", Color(0xFF0288D1)) }
-                if (cashier.canEodTutupToko) item { PermissionTag("EOD & Backup", Color(0xFF37474F)) }
-                if (cashier.canViewLaporan) item { PermissionTag("Laporan Toko", RetailGreen) }
-                if (cashier.canManageKaryawan) item { PermissionTag("Kelola Kasir", Color(0xFF3949AB)) }
-                if (cashier.canManageVoucher) item { PermissionTag("Voucher & Poin", RetailAmber) }
+                if (cashier.canManageProduk) item { PermissionTag("Produk & Harga", Color(0xFF0288D1)) }
+                if (cashier.canCetakLabelRak) item { PermissionTag("Label Rak", Color(0xFF00897B)) }
+                if (cashier.canViewPenjualan) item { PermissionTag("Riwayat Penjualan", Color(0xFF1E88E5)) }
+                if (cashier.canManagePiutang) item { PermissionTag("Piutang Pelanggan", Color(0xFFE65100)) }
+                if (cashier.canManagePembelian) item { PermissionTag("Pembelian Barang", Color(0xFFFB8C00)) }
+                if (cashier.canReturPembelian) item { PermissionTag("Retur", Color(0xFFE53935)) }
+                if (cashier.canStockOpname) item { PermissionTag("Stok Opname", Color(0xFF6D4C41)) }
+                if (cashier.canViewLaporan) item { PermissionTag("Laporan Lengkap", RetailGreen) }
+                if (cashier.canEodTutupToko) item { PermissionTag("Tutup Toko (EOD)", Color(0xFFD81B60)) }
+                if (cashier.canManageMember) item { PermissionTag("Member & Pelanggan", Color(0xFF00ACC1)) }
+                if (cashier.canManageVoucher) item { PermissionTag("Voucher & Poin", Color(0xFF8E24AA)) }
+                if (cashier.canManageKaryawan) item { PermissionTag("Karyawan & Kasir", Color(0xFF3949AB)) }
+                if (cashier.canManageShift) item { PermissionTag("Pengaturan Shift", Color(0xFF5E35B1)) }
+                if (cashier.canManagePrinter) item { PermissionTag("Printer & Struk", Color(0xFF7CB342)) }
+                if (cashier.canManageProfilToko) item { PermissionTag("Profil Toko", Color(0xFF039BE5)) }
+                if (cashier.canBackupRestore) item { PermissionTag("Backup & Restore", Color(0xFF455A64)) }
+                if (cashier.canManageSync) item { PermissionTag("Sinkron Multi-Device", Color(0xFF00897B)) }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -665,22 +677,27 @@ fun CashierEditAccessDialog(
     var canBukaTutupShift by remember { mutableStateOf(cashier?.canBukaTutupShift ?: true) }
     var canClerekKasir by remember { mutableStateOf(cashier?.canClerekKasir ?: true) }
     var canViewOmsetShift by remember { mutableStateOf(cashier?.canViewOmsetShift ?: false) }
-    var canManageShift by remember { mutableStateOf(cashier?.canManageShift ?: false) }
 
-    // --- 3. HAK AKSES SIS & MANAJEMEN ---
+    // --- 3. HAK AKSES SIS & MANAJEMEN LENGKAP (18 Menu) ---
     var canAccessSis by remember { mutableStateOf(cashier?.canAccessSis ?: false) }
     var canManageProduk by remember { mutableStateOf(cashier?.canManageProduk ?: false) }
-    var canManagePembelian by remember { mutableStateOf(cashier?.canManagePembelian ?: false) }
     var canCetakLabelRak by remember { mutableStateOf(cashier?.canCetakLabelRak ?: false) }
-    var canStockOpname by remember { mutableStateOf(cashier?.canStockOpname ?: false) }
+    var canViewPenjualan by remember { mutableStateOf(cashier?.canViewPenjualan ?: false) }
+    var canManagePiutang by remember { mutableStateOf(cashier?.canManagePiutang ?: false) }
+    var canManagePembelian by remember { mutableStateOf(cashier?.canManagePembelian ?: false) }
     var canReturPembelian by remember { mutableStateOf(cashier?.canReturPembelian ?: false) }
-    var canEodTutupToko by remember { mutableStateOf(cashier?.canEodTutupToko ?: false) }
+    var canStockOpname by remember { mutableStateOf(cashier?.canStockOpname ?: false) }
     var canViewLaporan by remember { mutableStateOf(cashier?.canViewLaporan ?: false) }
+    var canEodTutupToko by remember { mutableStateOf(cashier?.canEodTutupToko ?: false) }
+    var canManageMember by remember { mutableStateOf(cashier?.canManageMember ?: false) }
     var canManageVoucher by remember { mutableStateOf(cashier?.canManageVoucher ?: false) }
     var canManageKaryawan by remember { mutableStateOf(cashier?.canManageKaryawan ?: false) }
-    var canManageMember by remember { mutableStateOf(cashier?.canManageMember ?: false) }
-    var canManageSettings by remember { mutableStateOf(cashier?.canManageSettings ?: false) }
+    var canManageShift by remember { mutableStateOf(cashier?.canManageShift ?: false) }
+    var canManagePrinter by remember { mutableStateOf(cashier?.canManagePrinter ?: cashier?.canManageSettings ?: false) }
+    var canManageProfilToko by remember { mutableStateOf(cashier?.canManageProfilToko ?: cashier?.canManageSettings ?: false) }
     var canBackupRestore by remember { mutableStateOf(cashier?.canBackupRestore ?: false) }
+    var canManageSync by remember { mutableStateOf(cashier?.canManageSync ?: false) }
+    var canManageSettings by remember { mutableStateOf(cashier?.canManageSettings ?: false) }
 
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -708,17 +725,22 @@ fun CashierEditAccessDialog(
 
         canAccessSis = template.canAccessSis
         canManageProduk = template.canManageProduk
-        canManagePembelian = template.canManagePembelian
         canCetakLabelRak = template.canCetakLabelRak
-        canStockOpname = template.canStockOpname
+        canViewPenjualan = template.canViewPenjualan
+        canManagePiutang = template.canManagePiutang
+        canManagePembelian = template.canManagePembelian
         canReturPembelian = template.canReturPembelian
-        canEodTutupToko = template.canEodTutupToko
+        canStockOpname = template.canStockOpname
         canViewLaporan = template.canViewLaporan
+        canEodTutupToko = template.canEodTutupToko
+        canManageMember = template.canManageMember
         canManageVoucher = template.canManageVoucher
         canManageKaryawan = template.canManageKaryawan
-        canManageMember = template.canManageMember
-        canManageSettings = template.canManageSettings
+        canManagePrinter = template.canManagePrinter
+        canManageProfilToko = template.canManageProfilToko
         canBackupRestore = template.canBackupRestore
+        canManageSync = template.canManageSync
+        canManageSettings = template.canManageSettings
     }
 
     // Fungsi pilih semua atau kosongkan semua
@@ -738,17 +760,60 @@ fun CashierEditAccessDialog(
 
         canAccessSis = enable
         canManageProduk = enable
-        canManagePembelian = enable
         canCetakLabelRak = enable
-        canStockOpname = enable
+        canViewPenjualan = enable
+        canManagePiutang = enable
+        canManagePembelian = enable
         canReturPembelian = enable
-        canEodTutupToko = enable
+        canStockOpname = enable
         canViewLaporan = enable
+        canEodTutupToko = enable
+        canManageMember = enable
         canManageVoucher = enable
         canManageKaryawan = enable
-        canManageMember = enable
-        canManageSettings = enable
+        canManagePrinter = enable
+        canManageProfilToko = enable
         canBackupRestore = enable
+        canManageSync = enable
+        canManageSettings = enable
+    }
+
+    // Fungsi mengaktifkan atau menonaktifkan seluruh menu SIS dalam satu klik
+    fun toggleAllSis(enable: Boolean) {
+        canAccessSis = enable
+        canManageProduk = enable
+        canCetakLabelRak = enable
+        canViewPenjualan = enable
+        canManagePiutang = enable
+        canManagePembelian = enable
+        canReturPembelian = enable
+        canStockOpname = enable
+        canViewLaporan = enable
+        canEodTutupToko = enable
+        canManageMember = enable
+        canManageVoucher = enable
+        canManageKaryawan = enable
+        canManageShift = enable
+        canManagePrinter = enable
+        canManageProfilToko = enable
+        canBackupRestore = enable
+        canManageSync = enable
+        canManageSettings = enable
+    }
+
+    // Fungsi preset hanya kasir POS (tanpa akses SIS)
+    fun setOnlyPosCashier() {
+        canTransaksiPos = true
+        canVoidItem = false
+        canCancelTransaksi = true
+        canReturKonsumen = false
+        canPendingRecall = true
+        canManualDiscount = false
+        canBukaLaciUang = true
+        canBukaTutupShift = true
+        canClerekKasir = true
+        canViewOmsetShift = false
+        toggleAllSis(false)
     }
 
     val activeCount = listOf(
@@ -757,7 +822,8 @@ fun CashierEditAccessDialog(
         canManageShift,
         canAccessSis, canManageProduk, canManagePembelian, canCetakLabelRak, canStockOpname,
         canReturPembelian, canEodTutupToko, canViewLaporan, canManageVoucher, canManageKaryawan,
-        canManageMember, canManageSettings, canBackupRestore
+        canManageMember, canManageSettings, canBackupRestore,
+        canViewPenjualan, canManagePiutang, canManagePrinter, canManageProfilToko, canManageSync
     ).count { it }
 
     Dialog(
@@ -792,7 +858,7 @@ fun CashierEditAccessDialog(
                                 color = Color.White
                             )
                             Text(
-                                "Total Hak Akses Aktif: $activeCount dari 24 Izin",
+                                "Total Hak Akses Aktif: $activeCount dari 28 Izin",
                                 fontSize = 11.sp,
                                 color = Color.White.copy(alpha = 0.85f)
                             )
@@ -983,39 +1049,77 @@ fun CashierEditAccessDialog(
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             // Header & Quick Preset Buttons
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Security, contentDescription = null, tint = RetailNavy, modifier = Modifier.size(20.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("2. Detail Hak Akses Pengguna ($activeCount/23)", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = RetailNavy)
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Security, contentDescription = null, tint = RetailNavy, modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("2. Detail Hak Akses Pengguna ($activeCount/28)", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = RetailNavy)
+                                    }
                                 }
 
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    OutlinedButton(
-                                        onClick = { toggleAll(true) },
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                        shape = RoundedCornerShape(6.dp)
-                                    ) {
-                                        Text("PILIH SEMUA", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Quick helper action buttons for fast assignment
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    item {
+                                        OutlinedButton(
+                                            onClick = { toggleAll(true) },
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text("PILIH SEMUA", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
                                     }
-                                    OutlinedButton(
-                                        onClick = { toggleAll(false) },
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                        shape = RoundedCornerShape(6.dp)
-                                    ) {
-                                        Text("KOSONGKAN", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    item {
+                                        OutlinedButton(
+                                            onClick = { toggleAll(false) },
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text("KOSONGKAN", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
                                     }
-                                    Button(
-                                        onClick = { applyRoleTemplate(role) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8EAF6), contentColor = RetailNavy),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                        shape = RoundedCornerShape(6.dp)
-                                    ) {
-                                        Text("TEMPLATE ROLE", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    item {
+                                        Button(
+                                            onClick = { toggleAllSis(true) },
+                                            colors = ButtonDefaults.buttonColors(containerColor = RetailGreen, contentColor = Color.White),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(13.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("SEMUA MENU SIS", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    item {
+                                        Button(
+                                            onClick = { setOnlyPosCashier() },
+                                            colors = ButtonDefaults.buttonColors(containerColor = RetailRedPrimary, contentColor = Color.White),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Icon(Icons.Default.PointOfSale, contentDescription = null, modifier = Modifier.size(13.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("HANYA KASIR POS", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    item {
+                                        Button(
+                                            onClick = { applyRoleTemplate(role) },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8EAF6), contentColor = RetailNavy),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text("TEMPLATE ROLE", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
                                     }
                                 }
                             }
@@ -1108,113 +1212,141 @@ fun CashierEditAccessDialog(
                                     checked = canViewOmsetShift,
                                     onCheckedChange = { canViewOmsetShift = it }
                                 )
-                                HorizontalDivider(color = Color(0xFFF0F0F0))
-                                PermissionToggleRow(
-                                    title = "Pengaturan Shift di SIS",
-                                    description = "Dapat mengakses dan mengonfigurasi jam kerja shift kasir di menu SIS",
-                                    checked = canManageShift,
-                                    onCheckedChange = { canManageShift = it }
-                                )
                             }
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            // --- GRUP 3: SISTEM INFORMASI SWALAYAN (SIS) & BACK OFFICE (13 Izin) ---
+                            // --- GRUP 3: SISTEM INFORMASI SWALAYAN (SIS) - 18 MENU LENGKAP ---
                             PermissionGroupCard(
-                                title = "C. SIS & Manajemen Toko (Back Office)",
-                                subtitle = "Kewenangan mengakses menu pengelolaan dan database toko",
+                                title = "C. Menu SIS & Manajemen Toko (18 Menu Lengkap)",
+                                subtitle = "Kewenangan membuka masing-masing menu di Dashboard SIS",
                                 icon = Icons.Default.Storefront,
                                 headerColor = RetailNavy
                             ) {
                                 PermissionToggleRow(
-                                    title = "Akses Menu Back Office (SIS)",
-                                    description = "Dapat masuk ke layar dashboard menu SIS dan pengaturan",
+                                    title = "1. Akses Dashboard SIS",
+                                    description = "Kunci utama untuk masuk ke layar dashboard menu SIS",
                                     checked = canAccessSis,
                                     onCheckedChange = { canAccessSis = it }
                                 )
                                 HorizontalDivider(color = Color(0xFFF0F0F0))
                                 PermissionToggleRow(
-                                    title = "Kelola Katalog & Harga Produk",
-                                    description = "Tambah master barang, ubah harga jual, barcode, & minimal stok",
+                                    title = "2. Produk & Harga",
+                                    description = "Master barang, ubah harga jual, barcode, repack & promo",
                                     checked = canManageProduk,
                                     onCheckedChange = { canManageProduk = it }
                                 )
                                 HorizontalDivider(color = Color(0xFFF0F0F0))
                                 PermissionToggleRow(
-                                    title = "Faktur Pembelian & Supplier",
-                                    description = "Input penerimaan barang supplier (Goods Receipt) & purchase order",
-                                    checked = canManagePembelian,
-                                    onCheckedChange = { canManagePembelian = it }
-                                )
-                                HorizontalDivider(color = Color(0xFFF0F0F0))
-                                PermissionToggleRow(
-                                    title = "Cetak Label Rak & Barcode",
-                                    description = "Mencetak price tag planogram rak minimarket",
+                                    title = "3. Cetak Label Rak",
+                                    description = "Mencetak label harga rak planogram minimarket A4/F4",
                                     checked = canCetakLabelRak,
                                     onCheckedChange = { canCetakLabelRak = it }
                                 )
                                 HorizontalDivider(color = Color(0xFFF0F0F0))
                                 PermissionToggleRow(
-                                    title = "Stok Opname Toko",
+                                    title = "4. Riwayat Penjualan",
+                                    description = "Melihat riwayat transaksi kasir, detail bon, dan cetak ulang struk",
+                                    checked = canViewPenjualan,
+                                    onCheckedChange = { canViewPenjualan = it }
+                                )
+                                HorizontalDivider(color = Color(0xFFF0F0F0))
+                                PermissionToggleRow(
+                                    title = "5. Piutang Pelanggan",
+                                    description = "Mencatat kasbon langganan, pembayaran cicilan & jatuh tempo",
+                                    checked = canManagePiutang,
+                                    onCheckedChange = { canManagePiutang = it }
+                                )
+                                HorizontalDivider(color = Color(0xFFF0F0F0))
+                                PermissionToggleRow(
+                                    title = "6. Pembelian Barang",
+                                    description = "Input penerimaan barang supplier (Goods Receipt) & faktur pembelian",
+                                    checked = canManagePembelian,
+                                    onCheckedChange = { canManagePembelian = it }
+                                )
+                                HorizontalDivider(color = Color(0xFFF0F0F0))
+                                PermissionToggleRow(
+                                    title = "7. Retur Barang (Supplier & Penjualan)",
+                                    description = "Membuat nota retur barang (NRB) rusak/expired ke distributor",
+                                    checked = canReturPembelian,
+                                    onCheckedChange = { canReturPembelian = it }
+                                )
+                                HorizontalDivider(color = Color(0xFFF0F0F0))
+                                PermissionToggleRow(
+                                    title = "8. Stok Opname",
                                     description = "Menginput hasil perhitungan fisik stok dan penyesuaian selisih",
                                     checked = canStockOpname,
                                     onCheckedChange = { canStockOpname = it }
                                 )
                                 HorizontalDivider(color = Color(0xFFF0F0F0))
                                 PermissionToggleRow(
-                                    title = "Retur Pembelian ke Supplier",
-                                    description = "Membuat nota retur barang (NRB) rusak/kadaluarsa ke distributor",
-                                    checked = canReturPembelian,
-                                    onCheckedChange = { canReturPembelian = it }
-                                )
-                                HorizontalDivider(color = Color(0xFFF0F0F0))
-                                PermissionToggleRow(
-                                    title = "Proses EOD & Backup Toko",
-                                    description = "Menjalankan End of Day harian dan backup otomatis ke folder Android",
-                                    checked = canEodTutupToko,
-                                    onCheckedChange = { canEodTutupToko = it }
-                                )
-                                HorizontalDivider(color = Color(0xFFF0F0F0))
-                                PermissionToggleRow(
-                                    title = "Laporan Penjualan & Margin",
-                                    description = "Melihat histori transaksi, omset harian, laba kotor, dan rekap bon",
+                                    title = "9. Laporan Lengkap",
+                                    description = "Melihat laporan penjualan, omset harian, laba kotor, & grafik performa",
                                     checked = canViewLaporan,
                                     onCheckedChange = { canViewLaporan = it }
                                 )
                                 HorizontalDivider(color = Color(0xFFF0F0F0))
                                 PermissionToggleRow(
-                                    title = "Pengaturan Voucher & Poin",
-                                    description = "Membuat promo voucher belanja unik acak dan rasio poin loyalitas",
-                                    checked = canManageVoucher,
-                                    onCheckedChange = { canManageVoucher = it }
+                                    title = "10. Tutup Toko (EOD)",
+                                    description = "Menjalankan End of Day harian dan tutup buku kas harian",
+                                    checked = canEodTutupToko,
+                                    onCheckedChange = { canEodTutupToko = it }
                                 )
                                 HorizontalDivider(color = Color(0xFFF0F0F0))
                                 PermissionToggleRow(
-                                    title = "Kelola Kasir & Hak Akses",
-                                    description = "Menambah akun petugas dan mengatur kewenangan akses pengguna",
-                                    checked = canManageKaryawan,
-                                    onCheckedChange = { canManageKaryawan = it }
-                                )
-                                HorizontalDivider(color = Color(0xFFF0F0F0))
-                                PermissionToggleRow(
-                                    title = "Kelola Data Member Pelanggan",
-                                    description = "Mendaftarkan kartu member, nomor HP, dan poin loyalty pembeli",
+                                    title = "11. Member & Pelanggan",
+                                    description = "Mendaftarkan kartu member, nomor HP, riwayat dan saldo reward poin",
                                     checked = canManageMember,
                                     onCheckedChange = { canManageMember = it }
                                 )
                                 HorizontalDivider(color = Color(0xFFF0F0F0))
                                 PermissionToggleRow(
-                                    title = "Pengaturan Toko & Printer",
-                                    description = "Mengubah nama toko, footer struk, dan koneksi printer bluetooth",
-                                    checked = canManageSettings,
-                                    onCheckedChange = { canManageSettings = it }
+                                    title = "12. Voucher & Poin",
+                                    description = "Membuat kupon diskon voucher belanja dan aturan rasio poin loyalitas",
+                                    checked = canManageVoucher,
+                                    onCheckedChange = { canManageVoucher = it }
                                 )
                                 HorizontalDivider(color = Color(0xFFF0F0F0))
                                 PermissionToggleRow(
-                                    title = "Cadangkan & Pulihkan Database",
-                                    description = "Ekspor dan impor cadangan file database offline",
+                                    title = "13. Karyawan & Kasir",
+                                    description = "Menambah petugas toko, mengganti PIN dan mengatur hak akses",
+                                    checked = canManageKaryawan,
+                                    onCheckedChange = { canManageKaryawan = it }
+                                )
+                                HorizontalDivider(color = Color(0xFFF0F0F0))
+                                PermissionToggleRow(
+                                    title = "14. Pengaturan Shift",
+                                    description = "Mengonfigurasi jam kerja shift kasir dan modal kasir standar",
+                                    checked = canManageShift,
+                                    onCheckedChange = { canManageShift = it }
+                                )
+                                HorizontalDivider(color = Color(0xFFF0F0F0))
+                                PermissionToggleRow(
+                                    title = "15. Printer & Struk",
+                                    description = "Koneksi printer thermal Bluetooth/USB, ukuran kertas & format struk",
+                                    checked = canManagePrinter,
+                                    onCheckedChange = { canManagePrinter = it }
+                                )
+                                HorizontalDivider(color = Color(0xFFF0F0F0))
+                                PermissionToggleRow(
+                                    title = "16. Profil Toko",
+                                    description = "Mengubah nama toko, alamat, nomor telepon, NPWP & catatan footer",
+                                    checked = canManageProfilToko,
+                                    onCheckedChange = { canManageProfilToko = it }
+                                )
+                                HorizontalDivider(color = Color(0xFFF0F0F0))
+                                PermissionToggleRow(
+                                    title = "17. Backup & Restore",
+                                    description = "Mencadangkan (ekspor) dan memulihkan (impor) database offline",
                                     checked = canBackupRestore,
                                     onCheckedChange = { canBackupRestore = it }
+                                )
+                                HorizontalDivider(color = Color(0xFFF0F0F0))
+                                PermissionToggleRow(
+                                    title = "18. Sinkron Multi-Device",
+                                    description = "Mengonfigurasi server master & kasir klien sinkronisasi real-time",
+                                    checked = canManageSync,
+                                    onCheckedChange = { canManageSync = it }
                                 )
                             }
                         }
@@ -1289,8 +1421,14 @@ fun CashierEditAccessDialog(
                                     canManageVoucher = canManageVoucher,
                                     canManageKaryawan = canManageKaryawan,
                                     canManageMember = canManageMember,
-                                    canManageSettings = canManageSettings,
-                                    canBackupRestore = canBackupRestore
+                                    canManageSettings = canManageSettings || canManageProfilToko || canManagePrinter,
+                                    canBackupRestore = canBackupRestore,
+
+                                    canViewPenjualan = canViewPenjualan,
+                                    canManagePiutang = canManagePiutang,
+                                    canManagePrinter = canManagePrinter,
+                                    canManageProfilToko = canManageProfilToko,
+                                    canManageSync = canManageSync
                                 )
 
                                 onSave(finalUser)

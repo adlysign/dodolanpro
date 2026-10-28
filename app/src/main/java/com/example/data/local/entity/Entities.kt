@@ -131,7 +131,14 @@ data class CashierUserEntity(
     val canManageKaryawan: Boolean = false,
     val canManageMember: Boolean = false,
     val canManageSettings: Boolean = false,
-    val canBackupRestore: Boolean = false
+    val canBackupRestore: Boolean = false,
+
+    // --- HAK AKSES MENU SIS TAMBAHAN (LENGKAP SEMUA MENU) ---
+    val canViewPenjualan: Boolean = false,
+    val canManagePiutang: Boolean = false,
+    val canManagePrinter: Boolean = false,
+    val canManageProfilToko: Boolean = false,
+    val canManageSync: Boolean = false
 ) {
     fun isOwner(): Boolean = role.equals("OWNER", ignoreCase = true) || nik == "11111111"
     fun isAdmin(): Boolean = isOwner() || role.equals("ADMIN", ignoreCase = true)
@@ -163,6 +170,11 @@ data class CashierUserEntity(
         if (canManageMember) count++
         if (canManageSettings) count++
         if (canBackupRestore) count++
+        if (canViewPenjualan) count++
+        if (canManagePiutang) count++
+        if (canManagePrinter) count++
+        if (canManageProfilToko) count++
+        if (canManageSync) count++
         return count
     }
 
@@ -205,7 +217,12 @@ data class CashierUserEntity(
                     canManageKaryawan = true,
                     canManageMember = true,
                     canManageSettings = true,
-                    canBackupRestore = true
+                    canBackupRestore = true,
+                    canViewPenjualan = true,
+                    canManagePiutang = true,
+                    canManagePrinter = true,
+                    canManageProfilToko = true,
+                    canManageSync = true
                 )
                 "SUPERVISOR" -> CashierUserEntity(
                     nik = nik,
@@ -236,7 +253,12 @@ data class CashierUserEntity(
                     canManageKaryawan = false,
                     canManageMember = true,
                     canManageSettings = false,
-                    canBackupRestore = false
+                    canBackupRestore = false,
+                    canViewPenjualan = true,
+                    canManagePiutang = true,
+                    canManagePrinter = true,
+                    canManageProfilToko = false,
+                    canManageSync = false
                 )
                 else -> CashierUserEntity(
                     nik = nik,
@@ -267,7 +289,12 @@ data class CashierUserEntity(
                     canManageKaryawan = false,
                     canManageMember = false,
                     canManageSettings = false,
-                    canBackupRestore = false
+                    canBackupRestore = false,
+                    canViewPenjualan = false,
+                    canManagePiutang = false,
+                    canManagePrinter = false,
+                    canManageProfilToko = false,
+                    canManageSync = false
                 )
             }
         }

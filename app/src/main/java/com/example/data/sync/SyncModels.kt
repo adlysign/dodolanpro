@@ -25,7 +25,9 @@ data class DevicePeer(
     val ipAddress: String,
     val lastSeenTimestamp: Long,
     val pendingCount: Int, // Jumlah transaksi / keranjang pending di kasir ini
-    val isOnline: Boolean = true
+    val isOnline: Boolean = true,
+    val isShiftOpen: Boolean = false,
+    val hasClerek: Boolean = false
 )
 
 data class SyncStatusInfo(
@@ -45,5 +47,6 @@ data class EodPendingCheckResult(
     val totalPendingAcrossAllDevices: Int,
     val devicesWithPending: List<DevicePeer>,
     val activeDevicesCount: Int,
-    val message: String
+    val message: String,
+    val devicesWithoutClerek: List<DevicePeer> = emptyList()
 )

@@ -255,6 +255,9 @@ class PosSyncManager(
                 method == "POST" && path == "/api/sale" -> {
                     handlePostSale(body)
                 }
+                method == "POST" && path == "/api/clerek" -> {
+                    handlePostClerek(body)
+                }
                 method == "GET" && path.startsWith("/api/eod_check") -> {
                     handleGetEodCheck()
                 }
@@ -315,6 +318,8 @@ class PosSyncManager(
             val nik = json.optString("cashierNik", "-")
             val name = json.optString("cashierName", "Kasir")
             val pending = json.optInt("pendingCount", 0)
+            val isShiftOpen = json.optBoolean("isShiftOpen", false)
+            val hasClerek = json.optBoolean("hasClerek", false)
 
             val peer = DevicePeer(
                 deviceId = devId,
@@ -325,9 +330,22 @@ class PosSyncManager(
                 ipAddress = clientIp,
                 lastSeenTimestamp = System.currentTimeMillis(),
                 pendingCount = pending,
-                isOnline = true
+                isOnline = true,
+                isShiftOpen = isShiftOpen,
+                hasClerek = hasClerek
             )
             connectedDevicesMap[devId] = peer
+
+            // Auto-reconcile transactions on Server if client has marked clerek as done
+            if (hasClerek && nik.isNotBlank() && nik != "-") {
+                scope.launch {
+                    try {
+                        repository.markTransactionsClerekByNik(nik)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error auto-reconciling clerek for $nik", e)
+                    }
+                }
+            }
 
             // Update UI StateFlow
             cleanOldDevices()
@@ -344,6 +362,68 @@ class PosSyncManager(
             JSONObject().apply {
                 put("status", "error")
                 put("message", e.message)
+            }.toString()
+        }
+    }
+
+    private suspend fun handlePostClerek(body: String): String {
+        return try {
+            val json = JSONObject(body)
+            val kasirNik = json.getString("kasirNik")
+            val kasirNama = json.optString("kasirNama", "Kasir")
+            val shiftNum = json.optInt("shiftNumber", 1)
+            val modalAwal = json.optDouble("modalAwal", 0.0)
+            val totalTunai = json.optDouble("totalPenjualanTunai", 0.0)
+            val totalNonTunai = json.optDouble("totalPenjualanNonTunai", 0.0)
+            val totalPenjualan = json.optDouble("totalPenjualan", totalTunai + totalNonTunai)
+            val totalDonasi = json.optDouble("totalDonasi", 0.0)
+            val uangSetoranFisik = json.optDouble("uangSetoranFisik", 0.0)
+            val selisih = json.optDouble("selisih", 0.0)
+            val statusSelisih = json.optString("statusSelisih", "PAS")
+            val jumlahTransaksi = json.optInt("jumlahTransaksi", 0)
+            val timestamp = json.optLong("timestamp", System.currentTimeMillis())
+
+            val clerekRecord = ClerekEntity(
+                kasirNik = kasirNik,
+                kasirNama = kasirNama,
+                shiftNumber = shiftNum,
+                modalAwal = modalAwal,
+                totalPenjualanTunai = totalTunai,
+                totalPenjualanNonTunai = totalNonTunai,
+                totalPenjualan = totalPenjualan,
+                totalDonasi = totalDonasi,
+                uangSetoranFisik = uangSetoranFisik,
+                selisih = selisih,
+                statusSelisih = statusSelisih,
+                jumlahTransaksi = jumlahTransaksi,
+                timestamp = timestamp
+            )
+
+            repository.saveSyncedClerek(clerekRecord)
+
+            // Update peer in connectedDevicesMap
+            val devId = json.optString("deviceId", "")
+            if (devId.isNotBlank() && connectedDevicesMap.containsKey(devId)) {
+                val p = connectedDevicesMap[devId]!!
+                connectedDevicesMap[devId] = p.copy(
+                    isShiftOpen = false,
+                    hasClerek = true
+                )
+                cleanOldDevices()
+                _syncStatus.value = _syncStatus.value.copy(
+                    connectedDevices = connectedDevicesMap.values.toList()
+                )
+            }
+
+            JSONObject().apply {
+                put("status", "ok")
+                put("message", "Clerek kasir $kasirNama ($kasirNik) berhasil disinkronkan ke Server dan transaksi telah ditandai selesai clerek.")
+            }.toString()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling clerek post", e)
+            JSONObject().apply {
+                put("status", "error")
+                put("message", "Gagal sinkron clerek: ${e.message}")
             }.toString()
         }
     }
@@ -467,7 +547,9 @@ class PosSyncManager(
         cashierNik: String,
         cashierName: String,
         targetHost: String? = null,
-        targetPort: Int? = null
+        targetPort: Int? = null,
+        isShiftOpen: Boolean = false,
+        hasClerek: Boolean = false
     ): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         val cfg = _syncConfig.value
         val host = (targetHost ?: cfg.serverHost).trim()
@@ -489,6 +571,8 @@ class PosSyncManager(
                 put("cashierNik", cashierNik)
                 put("cashierName", cashierName)
                 put("pendingCount", pendingCount)
+                put("isShiftOpen", isShiftOpen)
+                put("hasClerek", hasClerek)
             }.toString()
 
             conn.outputStream.use { os ->
@@ -657,6 +741,49 @@ class PosSyncManager(
         }
     }
 
+    suspend fun pushClerekToServer(clerek: ClerekEntity): Boolean = withContext(Dispatchers.IO) {
+        val cfg = _syncConfig.value
+        if (cfg.role != SyncRole.CLIENT) return@withContext true
+        val urlStr = "http://${cfg.serverHost}:${cfg.serverPort}/api/clerek"
+        try {
+            val url = URL(urlStr)
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 4000
+                readTimeout = 5000
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
+
+            val payload = JSONObject().apply {
+                put("deviceId", cfg.deviceId)
+                put("kasirNik", clerek.kasirNik)
+                put("kasirNama", clerek.kasirNama)
+                put("shiftNumber", clerek.shiftNumber)
+                put("modalAwal", clerek.modalAwal)
+                put("totalPenjualanTunai", clerek.totalPenjualanTunai)
+                put("totalPenjualanNonTunai", clerek.totalPenjualanNonTunai)
+                put("totalPenjualan", clerek.totalPenjualan)
+                put("totalDonasi", clerek.totalDonasi)
+                put("uangSetoranFisik", clerek.uangSetoranFisik)
+                put("selisih", clerek.selisih)
+                put("statusSelisih", clerek.statusSelisih)
+                put("jumlahTransaksi", clerek.jumlahTransaksi)
+                put("timestamp", clerek.timestamp)
+            }.toString()
+
+            conn.outputStream.use { os ->
+                os.write(payload.toByteArray(Charsets.UTF_8))
+                os.flush()
+            }
+
+            conn.responseCode == 200
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed pushing clerek to server", e)
+            false
+        }
+    }
+
     // ==========================================
     // EOD MULTI-DEVICE VALIDATION
     // ==========================================
@@ -793,7 +920,13 @@ class PosSyncManager(
         )
     }
 
-    fun registerLocalDeviceAsServer(cashierNik: String, cashierName: String, localPending: Int) {
+    fun registerLocalDeviceAsServer(
+        cashierNik: String,
+        cashierName: String,
+        localPending: Int,
+        isShiftOpen: Boolean = false,
+        hasClerek: Boolean = false
+    ) {
         val cfg = _syncConfig.value
         val localPeer = DevicePeer(
             deviceId = cfg.deviceId,
@@ -804,7 +937,9 @@ class PosSyncManager(
             ipAddress = getLocalIpAddress(),
             lastSeenTimestamp = System.currentTimeMillis(),
             pendingCount = localPending,
-            isOnline = true
+            isOnline = true,
+            isShiftOpen = isShiftOpen,
+            hasClerek = hasClerek
         )
         connectedDevicesMap[cfg.deviceId] = localPeer
         _syncStatus.value = _syncStatus.value.copy(
