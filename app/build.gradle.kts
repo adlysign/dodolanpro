@@ -127,7 +127,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
-tasks.matching { it.name == "assembleDebug" }.configureEach {
+val copyApkToRoot by tasks.registering {
     doLast {
         val apkFile = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk").get().asFile
         if (apkFile.exists()) {
@@ -139,3 +139,8 @@ tasks.matching { it.name == "assembleDebug" }.configureEach {
         }
     }
 }
+
+tasks.matching { it.name == "assembleDebug" || it.name == "packageDebug" }.configureEach {
+    finalizedBy(copyApkToRoot)
+}
+
