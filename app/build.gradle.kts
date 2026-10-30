@@ -140,6 +140,28 @@ val copyApkToRoot by tasks.registering {
     }
 }
 
+tasks.matching { it.name.startsWith("ksp") }.configureEach {
+    val installKspAwtFilter = {
+        val filter = Thread.UncaughtExceptionHandler { thread, throwable ->
+            val msg = throwable.message ?: ""
+            val isKspAwtTeardownNpe = thread.name.startsWith("AWT-EventQueue") &&
+                throwable is NullPointerException &&
+                (msg.contains("ksp.com.intellij.openapi.application.Application") ||
+                    throwable.stackTrace.any { it.className.startsWith("ksp.com.intellij.") })
+            if (!isKspAwtTeardownNpe) {
+                System.err.print("Exception in thread \"${thread.name}\" ")
+                throwable.printStackTrace(System.err)
+            }
+        }
+        Thread.setDefaultUncaughtExceptionHandler(filter)
+        Thread.getAllStackTraces().keys
+            .filter { it.name.startsWith("AWT-EventQueue") }
+            .forEach { it.uncaughtExceptionHandler = filter }
+    }
+    doFirst { installKspAwtFilter() }
+    doLast { installKspAwtFilter() }
+}
+
 tasks.matching { it.name == "assembleDebug" || it.name == "packageDebug" }.configureEach {
     finalizedBy(copyApkToRoot)
 }

@@ -730,10 +730,27 @@ fun PosScreen(
                         )
                     }
 
-                    Column(modifier = Modifier.weight(0.9f).fillMaxHeight()) {
-                        TotalBannerDisplay(grandTotal = grandTotal)
+                    val activeCartItems = remember(cartItems) {
+                        cartItems.filter { !it.isVoid && !it.isRetur }
+                    }
+                    val totalQtyInCart = remember(activeCartItems) {
+                        activeCartItems.sumOf { it.qty }
+                    }
+                    val totalDiscountInCart = remember(activeCartItems, subtotal, grandTotal) {
+                        val itemDisc = activeCartItems.sumOf { it.promoDiscountAmount + it.customDiscount }
+                        maxOf(itemDisc, (subtotal - grandTotal).coerceAtLeast(0.0))
+                    }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                    Column(modifier = Modifier.weight(0.9f).fillMaxHeight()) {
+                        TotalBannerDisplay(
+                            grandTotal = grandTotal,
+                            subtotal = subtotal,
+                            totalItems = activeCartItems.size,
+                            totalQty = totalQtyInCart,
+                            totalDiscount = totalDiscountInCart
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
 
                         BarcodeSearchBar(
                             value = barcodeText,
@@ -765,9 +782,12 @@ fun PosScreen(
                             }
                         )
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
 
                         NumericKeypadCard(
+                            modifier = Modifier.weight(1f),
+                            cartItemCount = activeCartItems.size,
+                            grandTotal = grandTotal,
                             onDigit = { digit -> barcodeText += digit },
                             onBackspace = { if (barcodeText.isNotEmpty()) barcodeText = barcodeText.dropLast(1) },
                             onClear = { barcodeText = "" },
@@ -2424,7 +2444,11 @@ fun PromoBannerSection(
 @Composable
 fun TotalBannerDisplay(
     grandTotal: Double,
-    isCompact: Boolean = false
+    isCompact: Boolean = false,
+    subtotal: Double = grandTotal,
+    totalItems: Int = 0,
+    totalQty: Int = 0,
+    totalDiscount: Double = 0.0
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -2436,12 +2460,32 @@ fun TotalBannerDisplay(
                 .fillMaxWidth()
                 .padding(if (isCompact) 8.dp else 12.dp)
         ) {
-            Text(
-                "TOTAL BELANJA:",
-                color = Color.White.copy(alpha = 0.8f),
-                fontSize = if (isCompact) 10.sp else 11.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "TOTAL BELANJA:",
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = if (isCompact) 10.sp else 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                if (!isCompact) {
+                    Surface(
+                        color = Color.White.copy(alpha = 0.14f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            "$totalItems Item • $totalQty Qty",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
             Text(
                 formatRupiah(grandTotal),
                 color = Color.White,
@@ -2450,6 +2494,29 @@ fun TotalBannerDisplay(
                 fontFamily = FontFamily.Monospace,
                 maxLines = 1
             )
+            if (!isCompact) {
+                Spacer(modifier = Modifier.height(6.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Subtotal: ${formatRupiah(subtotal)}",
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        if (totalDiscount > 0.0) "Hemat: -${formatRupiah(totalDiscount)}" else "Diskon: Rp 0",
+                        color = if (totalDiscount > 0.0) Color(0xFF69F0AE) else Color.White.copy(alpha = 0.7f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
     }
 }
@@ -2514,6 +2581,9 @@ fun BarcodeSearchBar(
 
 @Composable
 fun NumericKeypadCard(
+    modifier: Modifier = Modifier,
+    cartItemCount: Int = 0,
+    grandTotal: Double = 0.0,
     onDigit: (String) -> Unit,
     onBackspace: () -> Unit,
     onClear: () -> Unit,
@@ -2521,62 +2591,109 @@ fun NumericKeypadCard(
     onEnter: (() -> Unit)? = null
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = androidx.compose.foundation.BorderStroke(1.dp, PosCardBorder),
         shape = RoundedCornerShape(8.dp)
     ) {
-        Column(modifier = Modifier.padding(6.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             val rows = listOf(
                 listOf("7", "8", "9", "C"),
                 listOf("4", "5", "6", "⌫"),
                 listOf("1", "2", "3", "00"),
-                listOf("0", "000", "+", "BAYAR")
+                listOf("0", "000", "+", "ENTER")
             )
 
             rows.forEach { rowKeys ->
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     rowKeys.forEach { key ->
-                        val isBayar = key == "BAYAR" || key == "+"
+                        val isEnter = key == "ENTER"
+                        val isPlus = key == "+"
                         val isSpecial = key == "C" || key == "⌫"
                         Button(
                             onClick = {
                                 when (key) {
                                     "C" -> onClear()
                                     "⌫" -> onBackspace()
-                                    "+", "BAYAR" -> {
+                                    "+" -> onPlusCashend()
+                                    "ENTER" -> {
                                         if (onEnter != null) onEnter() else onPlusCashend()
                                     }
                                     else -> onDigit(key)
                                 }
                             },
                             modifier = Modifier
-                                .weight(if (key == "BAYAR") 1.2f else 1f)
-                                .height(46.dp),
+                                .weight(if (isEnter) 1.15f else 1f)
+                                .fillMaxHeight()
+                                .defaultMinSize(minHeight = 48.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = when {
-                                    isBayar -> RetailRedPrimary
-                                    isSpecial -> Color(0xFF90A4AE)
-                                    else -> Color(0xFFF5F5F5)
+                                    isEnter -> RetailNavy
+                                    isPlus -> RetailGreen
+                                    isSpecial -> Color(0xFF64748B)
+                                    else -> Color(0xFFF1F5F9)
                                 },
-                                contentColor = if (isBayar || isSpecial) Color.White else Color.Black
+                                contentColor = if (isEnter || isPlus || isSpecial) Color.White else Color(0xFF0F172A)
                             ),
-                            shape = RoundedCornerShape(4.dp),
+                            border = if (!isEnter && !isPlus && !isSpecial) {
+                                BorderStroke(1.dp, Color(0xFFCBD5E1))
+                            } else null,
+                            shape = RoundedCornerShape(6.dp),
                             contentPadding = PaddingValues(0.dp)
                         ) {
                             Text(
                                 key,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = if (key.length > 2) 11.sp else 16.sp,
-                                color = if (isBayar || isSpecial) Color.White else Color.Black
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = if (key.length > 2) 13.sp else 18.sp,
+                                color = if (isEnter || isPlus || isSpecial) Color.White else Color(0xFF0F172A)
                             )
                         }
                     }
                 }
             }
+
+            Button(
+                onClick = onPlusCashend,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .testTag("cashend_button_landscape"),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = RetailRedPrimary,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(
+                    Icons.Default.Payments,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    if (cartItemCount > 0 && grandTotal > 0) {
+                        "BAYAR SEKARANG • ${formatRupiah(grandTotal)}"
+                    } else {
+                        "BAYAR / CHECKOUT (F12 / +)"
+                    },
+                    fontWeight = FontWeight.Black,
+                    fontSize = 14.sp,
+                    color = Color.White,
+                    maxLines = 1
+                )
+            }
         }
     }
 }
+
