@@ -40,16 +40,18 @@ fun ProductManagementScreen(
     onNavigateBack: () -> Unit
 ) {
     val products by viewModel.allProductsIncludingInactive.collectAsState()
+    val managedCategories by viewModel.productCategories.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("Semua") } // Semua, Promo, Repack, Stok Tipis
     var selectedCategory by remember { mutableStateOf("Semua Kategori") }
     var showProductEditorDialog by remember { mutableStateOf(false) }
+    var showCategoryManagerDialog by remember { mutableStateOf(false) }
     var productToEdit by remember { mutableStateOf<ProductEntity?>(null) }
     var feedbackMessage by remember { mutableStateOf("") }
 
-    val categoriesList = remember(products) {
-        listOf("Semua Kategori") + products.map { it.kategori.trim().ifEmpty { "Umum" } }.distinct().sorted()
+    val categoriesList = remember(managedCategories) {
+        listOf("Semua Kategori") + managedCategories
     }
 
     val filteredProducts = remember(products, searchQuery, selectedFilter, selectedCategory) {
@@ -85,6 +87,36 @@ fun ProductManagementScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Kembali")
+                    }
+                },
+                actions = {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.White.copy(alpha = 0.16f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                        modifier = Modifier
+                            .padding(end = 10.dp)
+                            .testTag("btn_kelola_kategori")
+                            .clickable { showCategoryManagerDialog = true }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Category,
+                                contentDescription = "Kelola Kategori",
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                "Kelola Kategori",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -180,12 +212,40 @@ fun ProductManagementScreen(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Filter Chips Kategori (Tampilan jelas, warna kontras, tidak putih polos sebelum dipilih)
+            // Filter Chips Kategori + Tombol Tambah/Hapus Kategori
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFFFFF8E1),
+                        border = BorderStroke(1.5.dp, RetailAmber),
+                        modifier = Modifier
+                            .testTag("chip_kelola_kategori")
+                            .clickable { showCategoryManagerDialog = true }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.AddCircleOutline,
+                                contentDescription = "Tambah/Hapus Kategori",
+                                tint = Color(0xFFB45309),
+                                modifier = Modifier.size(14.dp).padding(end = 4.dp)
+                            )
+                            Text(
+                                text = "+ / Hapus Kategori",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF92400E)
+                            )
+                        }
+                    }
+                }
                 items(categoriesList) { cat ->
                     val isSel = selectedCategory == cat
                     Surface(
@@ -253,6 +313,16 @@ fun ProductManagementScreen(
     if (showProductEditorDialog) {
         ProductEditorDialog(
             productToEdit = productToEdit,
+            availableCategories = managedCategories,
+            onAddCategory = { newCat, cb -> viewModel.addProductCategory(newCat, cb) },
+            onDeleteCategory = { delCat, cb ->
+                viewModel.deleteProductCategory(delCat) { ok, msg ->
+                    if (ok && selectedCategory.equals(delCat, ignoreCase = true)) {
+                        selectedCategory = "Semua Kategori"
+                    }
+                    cb(ok, msg)
+                }
+            },
             onDismiss = { showProductEditorDialog = false },
             onSave = { updatedProduct ->
                 val isEdit = productToEdit != null
@@ -261,6 +331,31 @@ fun ProductManagementScreen(
                     showProductEditorDialog = false
                 }
             }
+        )
+    }
+
+    if (showCategoryManagerDialog) {
+        CategoryManagementDialog(
+            categories = managedCategories,
+            products = products,
+            onAddCategory = { newCat, cb ->
+                viewModel.addProductCategory(newCat) { ok, msg ->
+                    if (ok) feedbackMessage = msg
+                    cb(ok, msg)
+                }
+            },
+            onDeleteCategory = { delCat, cb ->
+                viewModel.deleteProductCategory(delCat) { ok, msg ->
+                    if (ok) {
+                        feedbackMessage = msg
+                        if (selectedCategory.equals(delCat, ignoreCase = true)) {
+                            selectedCategory = "Semua Kategori"
+                        }
+                    }
+                    cb(ok, msg)
+                }
+            },
+            onDismiss = { showCategoryManagerDialog = false }
         )
     }
 }
@@ -414,10 +509,16 @@ fun ProductItemCard(
 @Composable
 fun ProductEditorDialog(
     productToEdit: ProductEntity?,
+    availableCategories: List<String> = listOf("Umum", "Makanan", "Minuman", "Snack", "Sembako", "Rokok", "Personal Care", "Household", "Elektronik"),
+    onAddCategory: (String, (Boolean, String) -> Unit) -> Unit = { _, _ -> },
+    onDeleteCategory: (String, (Boolean, String) -> Unit) -> Unit = { _, _ -> },
     onDismiss: () -> Unit,
     onSave: (ProductEntity) -> Unit
 ) {
     val isEdit = productToEdit != null
+    var newCategoryInput by remember { mutableStateOf("") }
+    var showInlineAddCategory by remember { mutableStateOf(false) }
+    var categoryStatusMessage by remember { mutableStateOf("") }
 
     // Base Fields
     var plu by remember { mutableStateOf(productToEdit?.plu ?: Random.nextInt(1000, 9999).toString()) }
@@ -624,15 +725,100 @@ fun ProductEditorDialog(
                                 )
                             }
 
-                            // Quick Category Selection Chips (Teks jelas, anti-putih sebelum dipilih)
-                            Text("Pilihan Kategori Cepat:", fontSize = 11.sp, color = Color(0xFF0F172A), fontWeight = FontWeight.Bold)
+                            // Quick Category Selection Chips + Tambah & Hapus Kategori
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Pilihan Kategori Cepat (Tap × untuk hapus):", fontSize = 11.sp, color = Color(0xFF0F172A), fontWeight = FontWeight.Bold)
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (showInlineAddCategory) RetailNavy else Color(0xFFEFF6FF),
+                                    border = BorderStroke(1.dp, RetailNavy),
+                                    modifier = Modifier
+                                        .testTag("btn_toggle_inline_add_category")
+                                        .clickable { showInlineAddCategory = !showInlineAddCategory }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            if (showInlineAddCategory) Icons.Default.Close else Icons.Default.Add,
+                                            contentDescription = null,
+                                            tint = if (showInlineAddCategory) Color.White else RetailNavy,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            if (showInlineAddCategory) "Tutup" else "+ Kategori Baru",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (showInlineAddCategory) Color.White else RetailNavy
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (showInlineAddCategory) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedTextField(
+                                        value = newCategoryInput,
+                                        onValueChange = { newCategoryInput = it },
+                                        label = { Text("Nama Kategori Baru") },
+                                        placeholder = { Text("Contoh: Kosmetik, ATK, Obat...") },
+                                        modifier = Modifier.weight(1f).testTag("input_inline_new_category"),
+                                        singleLine = true,
+                                        colors = tfColors
+                                    )
+                                    Button(
+                                        onClick = {
+                                            val clean = newCategoryInput.trim()
+                                            if (clean.isNotEmpty()) {
+                                                onAddCategory(clean) { ok, msg ->
+                                                    categoryStatusMessage = msg
+                                                    if (ok) {
+                                                        kategori = clean
+                                                        newCategoryInput = ""
+                                                        showInlineAddCategory = false
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = RetailGreen),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.height(50.dp).testTag("btn_save_inline_new_category")
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Tambah", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+                                    }
+                                }
+                            }
+
+                            if (categoryStatusMessage.isNotEmpty()) {
+                                Text(
+                                    categoryStatusMessage,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = RetailNavy,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+
                             LazyRow(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                val commonCats = listOf("Umum", "Makanan", "Minuman", "Snack", "Sembako", "Rokok", "Personal Care", "Household", "Elektronik")
-                                items(commonCats) { cat ->
+                                items(availableCategories) { cat ->
                                     val isSel = kategori.equals(cat, ignoreCase = true)
+                                    val canDelete = !cat.equals("Umum", ignoreCase = true)
                                     Surface(
                                         shape = RoundedCornerShape(16.dp),
                                         color = if (isSel) RetailNavy else Color(0xFFE2E8F0),
@@ -653,6 +839,24 @@ fun ProductEditorDialog(
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (isSel) Color.White else Color(0xFF0F172A)
                                             )
+                                            if (canDelete) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Icon(
+                                                    Icons.Default.Close,
+                                                    contentDescription = "Hapus Kategori $cat",
+                                                    tint = if (isSel) Color(0xFFFFCDD2) else Color(0xFFDC2626),
+                                                    modifier = Modifier
+                                                        .size(14.dp)
+                                                        .clickable {
+                                                            onDeleteCategory(cat) { ok, msg ->
+                                                                categoryStatusMessage = msg
+                                                                if (ok && kategori.equals(cat, ignoreCase = true)) {
+                                                                    kategori = "Umum"
+                                                                }
+                                                            }
+                                                        }
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -1393,3 +1597,229 @@ fun ProductEditorDialog(
         }
     }
 }
+
+@Composable
+fun CategoryManagementDialog(
+    categories: List<String>,
+    products: List<ProductEntity>,
+    onAddCategory: (String, (Boolean, String) -> Unit) -> Unit,
+    onDeleteCategory: (String, (Boolean, String) -> Unit) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var newCategoryName by remember { mutableStateOf("") }
+    var dialogMessage by remember { mutableStateOf("") }
+    var isError by remember { mutableStateOf(false) }
+    val tfColors = retailTextFieldColors()
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 560.dp)
+                .testTag("category_management_dialog"),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Header
+                Surface(
+                    color = RetailNavy,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Category, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text("KELOLA KATEGORI PRODUK", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
+                                Text("Tambah kategori baru atau hapus kategori yang tidak dipakai", color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp)
+                            }
+                        }
+                        IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Tutup", tint = Color.White)
+                        }
+                    }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .padding(16.dp)
+                ) {
+                    // Add Category Form
+                    Text("Tambah Kategori Baru:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = RetailNavy)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = newCategoryName,
+                            onValueChange = {
+                                newCategoryName = it
+                                dialogMessage = ""
+                            },
+                            placeholder = { Text("Ketik nama kategori...") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f).testTag("input_new_category_name"),
+                            colors = tfColors
+                        )
+                        Button(
+                            onClick = {
+                                onAddCategory(newCategoryName) { ok, msg ->
+                                    isError = !ok
+                                    dialogMessage = msg
+                                    if (ok) newCategoryName = ""
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = RetailGreen),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.height(52.dp).testTag("btn_add_category")
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("TAMBAH", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+                        }
+                    }
+
+                    if (dialogMessage.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            color = if (isError) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
+                            border = BorderStroke(1.dp, if (isError) RetailRedPrimary else RetailGreen),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = dialogMessage,
+                                color = if (isError) RetailRedPrimary else RetailGreen,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Daftar Kategori Aktif (${categories.size}):",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = Color(0xFF0F172A)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 280.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(categories) { cat ->
+                            val isDefault = cat.equals("Umum", ignoreCase = true)
+                            val prodCount = products.count {
+                                it.kategori.trim().ifEmpty { "Umum" }.equals(cat, ignoreCase = true)
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                        Icon(
+                                            Icons.Default.Sell,
+                                            contentDescription = null,
+                                            tint = RetailNavy,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                cat,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                color = Color(0xFF0F172A)
+                                            )
+                                            Text(
+                                                "$prodCount produk terdaftar",
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF64748B)
+                                            )
+                                        }
+                                    }
+
+                                    if (isDefault) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = Color(0xFFE2E8F0)
+                                        ) {
+                                            Text(
+                                                "Default",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF475569),
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                    } else {
+                                        IconButton(
+                                            onClick = {
+                                                onDeleteCategory(cat) { ok, msg ->
+                                                    isError = !ok
+                                                    dialogMessage = msg
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .testTag("btn_delete_category_$cat")
+                                        ) {
+                                            Icon(
+                                                Icons.Default.DeleteOutline,
+                                                contentDescription = "Hapus Kategori $cat",
+                                                tint = RetailRedPrimary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = PosCardBorder)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(containerColor = RetailNavy)
+                    ) {
+                        Text("SELESAI", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+

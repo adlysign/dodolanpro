@@ -433,6 +433,61 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     val allProductsIncludingInactive: StateFlow<List<ProductEntity>> = repository.allProductsAll
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val defaultProductCategories = listOf(
+        "Umum", "Makanan", "Minuman", "Snack", "Sembako", "Rokok", "Personal Care", "Household", "Elektronik"
+    )
+
+    private fun loadSavedStringList(key: String, defaultList: List<String>): List<String> {
+        val raw = shiftPrefs.getString(key, null) ?: return defaultList
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<String>()
+            for (i in 0 until arr.length()) {
+                val item = arr.optString(i, "").trim()
+                if (item.isNotEmpty() && list.none { it.equals(item, ignoreCase = true) }) {
+                    list.add(item)
+                }
+            }
+            if (list.isEmpty()) defaultList else list
+        } catch (_: Exception) {
+            defaultList
+        }
+    }
+
+    private fun saveStringList(key: String, list: List<String>) {
+        val arr = JSONArray()
+        list.forEach { arr.put(it) }
+        shiftPrefs.edit().putString(key, arr.toString()).apply()
+    }
+
+    private val _customCategories = MutableStateFlow(
+        loadSavedStringList("saved_product_categories_json", defaultProductCategories)
+    )
+    private val _deletedCategories = MutableStateFlow(
+        loadSavedStringList("deleted_product_categories_json", emptyList())
+    )
+
+    val productCategories: StateFlow<List<String>> = combine(
+        _customCategories,
+        _deletedCategories,
+        allProductsIncludingInactive
+    ) { customList, deletedList, productsList ->
+        val merged = mutableListOf("Umum")
+        val addUnique = { catName: String ->
+            val clean = catName.trim()
+            if (clean.isNotEmpty() &&
+                deletedList.none { it.equals(clean, ignoreCase = true) } &&
+                merged.none { it.equals(clean, ignoreCase = true) }
+            ) {
+                merged.add(clean)
+            }
+        }
+        customList.forEach { addUnique(it) }
+        productsList.forEach { addUnique(it.kategori.ifBlank { "Umum" }) }
+        listOf("Umum") + merged.filter { !it.equals("Umum", ignoreCase = true) }.sortedBy { it.lowercase() }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, defaultProductCategories)
+
+
     val allMembers: StateFlow<List<MemberEntity>> = repository.allMembers
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -2406,12 +2461,71 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveOrUpdateProduct(product: ProductEntity, isEdit: Boolean, onDone: () -> Unit) {
         viewModelScope.launch {
+            val cleanCat = product.kategori.trim().ifEmpty { "Umum" }
+            if (_customCategories.value.none { it.equals(cleanCat, ignoreCase = true) }) {
+                val updated = _customCategories.value + cleanCat
+                _customCategories.value = updated
+                saveStringList("saved_product_categories_json", updated)
+            }
+            if (_deletedCategories.value.any { it.equals(cleanCat, ignoreCase = true) }) {
+                val updatedDel = _deletedCategories.value.filterNot { it.equals(cleanCat, ignoreCase = true) }
+                _deletedCategories.value = updatedDel
+                saveStringList("deleted_product_categories_json", updatedDel)
+            }
             if (isEdit) {
                 repository.updateProduct(product)
             } else {
                 repository.insertProduct(product)
             }
             onDone()
+        }
+    }
+
+    fun addProductCategory(categoryName: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        val clean = categoryName.trim()
+        if (clean.isEmpty()) {
+            onResult(false, "Nama kategori tidak boleh kosong!")
+            return
+        }
+        if (productCategories.value.any { it.equals(clean, ignoreCase = true) }) {
+            onResult(false, "Kategori '$clean' sudah ada!")
+            return
+        }
+        val updatedDeleted = _deletedCategories.value.filterNot { it.equals(clean, ignoreCase = true) }
+        _deletedCategories.value = updatedDeleted
+        saveStringList("deleted_product_categories_json", updatedDeleted)
+
+        val updatedCustom = _customCategories.value.filterNot { it.equals(clean, ignoreCase = true) } + clean
+        _customCategories.value = updatedCustom
+        saveStringList("saved_product_categories_json", updatedCustom)
+        onResult(true, "Kategori '$clean' berhasil ditambahkan!")
+    }
+
+    fun deleteProductCategory(categoryName: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        val clean = categoryName.trim()
+        if (clean.equals("Umum", ignoreCase = true)) {
+            onResult(false, "Kategori dasar 'Umum' tidak dapat dihapus!")
+            return
+        }
+        viewModelScope.launch {
+            val updatedCustom = _customCategories.value.filterNot { it.equals(clean, ignoreCase = true) }
+            _customCategories.value = updatedCustom
+            saveStringList("saved_product_categories_json", updatedCustom)
+
+            val updatedDeleted = (_deletedCategories.value.filterNot { it.equals(clean, ignoreCase = true) } + clean)
+            _deletedCategories.value = updatedDeleted
+            saveStringList("deleted_product_categories_json", updatedDeleted)
+
+            val affectedProducts = allProductsIncludingInactive.value.filter {
+                it.kategori.trim().equals(clean, ignoreCase = true)
+            }
+            affectedProducts.forEach { prod ->
+                repository.updateProduct(prod.copy(kategori = "Umum"))
+            }
+            val movedNote = if (affectedProducts.isNotEmpty()) {
+                " (${affectedProducts.size} produk dipindahkan ke kategori 'Umum')"
+            } else ""
+            onResult(true, "Kategori '$clean' berhasil dihapus!$movedNote")
         }
     }
 
